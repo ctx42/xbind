@@ -189,8 +189,9 @@ func (dec *Decoder) decode(
 
 	// A field with a value error keeps that error.
 	lvl := newLevel(sv.Type(), dec.tagName())
-	dec.required("", sv, lvl, map[ptrKey]bool{}, func(pth string, err error) {
-		if ers == nil || ers.Get(pth) == nil {
+	seen := map[ptrKey]bool{}
+	dec.required("", sv, lvl, seen, stt, func(pth string, err error) {
+		if !stt.failed[pth] && (ers == nil || ers.Get(pth) == nil) {
 			setErr(pth, err)
 		}
 	})
@@ -365,6 +366,7 @@ type state struct {
 	reset   map[string]bool     // Canonical paths of slices and arrays reset.
 	log     []string            // The paths in reset, in the order set.
 	entries map[string]mapEntry // Map entries reached, by entry identity.
+	failed  map[string]bool     // Canonical paths of the values that failed.
 }
 
 // mapEntry is a map entry src keys reach.
@@ -378,6 +380,7 @@ func newState() *state {
 	return &state{
 		reset:   make(map[string]bool),
 		entries: make(map[string]mapEntry),
+		failed:  make(map[string]bool),
 	}
 }
 
@@ -436,6 +439,9 @@ func (dec *Decoder) apply(
 		ok, err := setDst(dst, dec.reg, vls...)
 		if !ok {
 			return decNotFound(dst.Type())
+		}
+		if err != nil {
+			stt.failed[pth] = true
 		}
 		return err
 	}
@@ -551,12 +557,14 @@ func (dec *Decoder) isLeafValue(typ reflect.Type) bool {
 // fields, other than embedded structs, are skipped; an embedded struct has no
 // path, so its required option is ignored. The lvl is the level position of
 // dst; a field its key does not name there is skipped. The seen map holds
-// the struct pointers on the path to dst, so a pointer cycle ends.
+// the struct pointers on the path to dst, so a pointer cycle ends. The paths
+// are canonical; stt gives the text of the map keys src keys reached.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
 	lvl level,
 	seen map[ptrKey]bool,
+	stt *state,
 	setErr func(string, error),
 ) {
 
@@ -601,7 +609,7 @@ func (dec *Decoder) required(
 			}
 			val := fld.Value()
 			if val.Kind() != reflect.Pointer {
-				dec.required(fldPath, fld.StructValue(), nxt, seen, setErr)
+				dec.required(fldPath, fld.StructValue(), nxt, seen, stt, setErr)
 				continue
 			}
 			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
@@ -609,24 +617,25 @@ func (dec *Decoder) required(
 				continue // An absent struct, or a pointer cycle.
 			}
 			seen[key] = true
-			dec.required(fldPath, fld.StructValue(), nxt, seen, setErr)
+			dec.required(fldPath, fld.StructValue(), nxt, seen, stt, setErr)
 			delete(seen, key)
 			continue
 		}
 		if tag.Contains("required") && isEmpty(fld.Value()) {
 			setErr(fldPath, ErrRequired)
 		}
-		dec.requiredIn(fldPath, fld.Value(), seen, setErr)
+		dec.requiredIn(fldPath, fld.Value(), seen, stt, setErr)
 	}
 }
 
 // requiredIn checks the required fields of the structs held in val, a slice,
 // array or map, or a pointer to one, and in the containers nested in it; pth
-// is the canonical path of val, and seen is as for required.
+// is the canonical path of val, and seen and stt are as for required.
 func (dec *Decoder) requiredIn(
 	pth string,
 	val reflect.Value,
 	seen map[ptrKey]bool,
+	stt *state,
 	setErr func(string, error),
 ) {
 
@@ -649,18 +658,22 @@ func (dec *Decoder) requiredIn(
 		}
 		sv := mirror.NewStructValue(val.Addr().Interface())
 		lvl := newLevel(val.Type(), dec.tagName())
-		dec.required(pth, sv, lvl, seen, setErr)
+		dec.required(pth, sv, lvl, seen, stt, setErr)
 
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < val.Len(); i++ {
 			ipt := pth + "[" + strconv.Itoa(i) + "]"
-			dec.requiredIn(ipt, val.Index(i), seen, setErr)
+			dec.requiredIn(ipt, val.Index(i), seen, stt, setErr)
 		}
 
 	case reflect.Map:
 		for it := val.MapRange(); it.Next(); {
-			kpt := pth + "[" + keyText(it.Key()) + "]"
-			dec.requiredIn(kpt, it.Value(), seen, setErr)
+			txt := keyText(it.Key())
+			if ent, ok := stt.entries[pth+"["+txt+"]"]; ok {
+				txt = ent.text // The key text the src key gave.
+			}
+			kpt := pth + "[" + txt + "]"
+			dec.requiredIn(kpt, it.Value(), seen, stt, setErr)
 		}
 	}
 }

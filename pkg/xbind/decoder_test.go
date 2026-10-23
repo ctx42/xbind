@@ -1635,6 +1635,36 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 0, dst.List)
 	})
 
+	t.Run("error - alias value error kept over required", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			Age int `url:"age,required"`
+		}{}
+		src := url.Values{"[age]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "[age]: invalid value: cannot convert `x` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - required under a registered map key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[TPoint]TRequired `url:"m"`
+		}{}
+		src := url.Values{"m[1,2].f_int": {"5"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecFunc(decPoint)).Decode(dst, src)
+
+		// --- Then ---
+		want := "m[1,2].f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2296,6 +2326,8 @@ func Test_newState(t *testing.T) {
 	assert.Nil(t, have.log)
 	assert.NotNil(t, have.entries)
 	assert.Len(t, 0, have.entries)
+	assert.NotNil(t, have.failed)
+	assert.Len(t, 0, have.failed)
 }
 
 func Test_state_markReset(t *testing.T) {
@@ -2596,6 +2628,7 @@ func Test_Decoder_required_tabular(t *testing.T) {
 				mirror.NewStructValue(tc.dst),
 				newLevel(reflect.TypeOf(tc.dst), "url"),
 				map[ptrKey]bool{},
+				newState(),
 				setErr,
 			)
 
