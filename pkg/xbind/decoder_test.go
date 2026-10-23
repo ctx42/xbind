@@ -1116,6 +1116,22 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 0, dst.FInt)
 	})
 
+	t.Run("ignored embedded non-struct", func(t *testing.T) {
+		// --- Given ---
+		type MyInt int
+		dst := &struct {
+			MyInt `url:"-"`
+		}{}
+		src := url.Values{"MyInt": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, MyInt(0), dst.MyInt)
+	})
+
 	t.Run("error - required pointer to unmarshaler", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {

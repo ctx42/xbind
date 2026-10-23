@@ -263,7 +263,10 @@ func newLevel(typ reflect.Type, key string) level {
 			for i, fld := range md.Fields() {
 				tag, _ := fld.Tag(key) // The caller checked the tags.
 				if tag.IsIgnored() {
-					if !fld.IsAnonymous() {
+					// An ignored embedded struct names no key of its own.
+					if !fld.IsAnonymous() ||
+						indirect(fld.Type()).Kind() != reflect.Struct {
+
 						ign[tag.NameOrField()] = true
 					}
 					continue
