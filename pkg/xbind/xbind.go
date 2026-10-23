@@ -80,15 +80,9 @@ const (
 	// ECEncNotFound represents the missing type encoder error code.
 	ECEncNotFound = "ECEncoderNotFound"
 
-	ECInvRequest = "ECInvRequest"
-
 	// ECRequired represents the error code for a required field that was not
 	// set. Only [Decoder] sets it.
 	ECRequired = "ECRequired"
-
-	// ECInvFormat represents the error code for field values with an invalid
-	// format.
-	ECInvFormat = "ECInvFormat"
 
 	// ECInvTimeFormat represents the error code for field values with an
 	// invalid RFC 3339 time format.
@@ -97,8 +91,6 @@ const (
 	// ECInvDurFormat represents the error code for field values with an
 	// invalid [time.Duration] string representation.
 	ECInvDurFormat = "ECInvDurFormat"
-
-	ECInternal = "ECInternal"
 
 	ECInvType = "ECInvType"
 
@@ -131,9 +123,6 @@ var (
 	// ErrType represents a mismatched field type during binding.
 	ErrType = xrr.New("invalid type", ECInvType)
 
-	// ErrFormat represents an invalid format error.
-	ErrFormat = xrr.New("invalid format", ECInvFormat)
-
 	// ErrTimeFormat represents an invalid time format when binding.
 	ErrTimeFormat = xrr.New("invalid RFC3339 time", ECInvTimeFormat)
 
@@ -146,13 +135,6 @@ var (
 
 	// ErrInvValue represents an error for an invalid field value.
 	ErrInvValue = xrr.New("invalid value", ECInvValue)
-
-	// ErrInvRequest represents an invalid request.
-	ErrInvRequest = xrr.New("invalid request", ECInvRequest)
-
-	// ErrInternal represents an internal error. Errors like this are caused by
-	// misusing the library.
-	ErrInternal = xrr.New("internal binding error", ECInternal)
 
 	// ErrReqSingleValue represents an error when none or many values are
 	// provided for a field taking a single value.
