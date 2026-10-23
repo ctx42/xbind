@@ -2032,6 +2032,20 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.List)
 	})
 
+	t.Run("largest index limit", func(t *testing.T) {
+		// --- Given ---
+		dst := &TBox{}
+		src := url.Values{"list[1500].size": {"1"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(math.MaxInt)).Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 1501, dst.List)
+		assert.Equal(t, TItem{Size: 1}, dst.List[1500])
+	})
+
 	t.Run("error - failed value keeps the slice", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
