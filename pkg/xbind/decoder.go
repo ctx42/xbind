@@ -124,8 +124,8 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // like "items[k].name". A src key leading into an embedded nil pointer to a
 // struct, which the decoder cannot allocate because the field is unexported, is
 // an [ErrUnexported] field error. A struct tag of dst that does not parse, or
-// that names a field with a bracket ("ids[]"), is an [ErrInvTag] error.
-// Pointers to pointers to structs are not supported.
+// that names a field with a bracket ("ids[]") or an embedded struct, is an
+// [ErrInvTag] error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {

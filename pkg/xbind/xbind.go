@@ -176,13 +176,13 @@ var (
 )
 
 // checkTags returns an error wrapping [ErrInvTag], with the Go path to the
-// field, for the first field of the typ struct, or of a struct it nests,
-// embeds or holds in slices, arrays and maps, whose struct tag does not
-// parse, or whose key tag names it with a bracket; the tag of every key
-// counts, as mirror parses the tag as a whole. The key tag decides which
-// fields are ignored. Unexported fields, other than embedded ones, are
-// skipped, as [Decoder] and [Encoder] skip them. The seen map holds the
-// struct types checked so far, so a recursive type ends.
+// field, for the first field of the typ struct, or of a struct it nests, embeds
+// or holds in slices, arrays and maps, whose struct tag does not parse, or
+// whose key tag names it with a bracket or names an embedded struct; the tag of
+// every key counts, as mirror parses the tag as a whole. The key tag decides
+// which fields are ignored. Unexported fields, other than embedded ones, are
+// skipped, as [Decoder] and [Encoder] skip them. The seen map holds the struct
+// types checked so far, so a recursive type ends.
 func checkTags(
 	prefix string,
 	typ reflect.Type,
@@ -212,6 +212,14 @@ func checkTags(
 		typ := baseType(fld.Type())
 		if tag.IsIgnored() || typ.Kind() != reflect.Struct {
 			continue
+		}
+		raw := fld.StructField().Tag.Get(key)
+		named := raw != "" && !strings.HasPrefix(raw, ",")
+		isStruct := indirect(fld.Type()).Kind() == reflect.Struct
+		if fld.IsAnonymous() && isStruct && named {
+			// The fields of an embedded struct belong to the outer struct.
+			const format = "%w: %s: name on embedded struct"
+			return xrr.Newf(format, ErrInvTag, pth, xrr.WithCode(ECInvTag))
 		}
 		if err = checkTags(pth, typ, key, seen); err != nil {
 			return err

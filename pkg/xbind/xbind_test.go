@@ -114,6 +114,47 @@ func Test_checkTags(t *testing.T) {
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: M.A: bracket in name", err)
 	})
+
+	t.Run("error - name on embedded struct", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[struct {
+			*TItem `url:"item"`
+		}]()
+
+		// --- When ---
+		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+
+		// --- Then ---
+		want := "invalid struct tag: TItem: name on embedded struct"
+		assert.ErrorEqual(t, want, err)
+		assert.ErrorIs(t, ErrInvTag, err)
+	})
+
+	t.Run("options on embedded struct", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[struct {
+			TItem `url:",omitempty"`
+		}]()
+
+		// --- When ---
+		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
+	t.Run("name on embedded value", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[struct {
+			TLevel `url:"level"`
+		}]()
+
+		// --- When ---
+		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
 }
 
 func Test_checkTags_tabular(t *testing.T) {
