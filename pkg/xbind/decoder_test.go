@@ -1399,6 +1399,47 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.ErrorContain(t, "expected integer", err)
 	})
 
+	t.Run("registered decoder for a pointer type", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(s string) (*TPoint, error) {
+			pnt, err := decPoint(s)
+			return &pnt, err
+		}))
+		dst := &struct {
+			P  TPoint  `url:"p"`
+			PP *TPoint `url:"pp"`
+		}{}
+		src := url.Values{"p": {"1,2"}, "pp": {"3,4"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, TPoint{X: 1, Y: 2}, dst.P)
+		assert.Equal(t, TPoint{X: 3, Y: 4}, *dst.PP)
+	})
+
+	t.Run("error - nil from pointer decoder", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(string) (*TPoint, error) {
+			return nil, nil
+		}))
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"p": {"1,2"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"p: invalid value: decoder returned nil `*xbind.TPoint` " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- Given ---
 		src := url.Values{}

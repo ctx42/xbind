@@ -53,10 +53,15 @@ func WithDecMaxIndex(n int) DecoderOption {
 // of those types. A value of type T takes a single src value, and an error
 // returned by fn is returned as is. The function takes precedence over the
 // [encoding.TextUnmarshaler] method of T and the decoders the package
-// provides, [time.Time] and [time.Duration] included. T must not be a pointer
-// type.
+// provides, [time.Time] and [time.Duration] included. For a pointer T, fn
+// decodes the type T points to, and a nil pointer it returns is an
+// [ErrInvValue] error.
 func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 	typ := reflect.TypeFor[T]()
+	isPtr := typ.Kind() == reflect.Pointer
+	if isPtr {
+		typ = typ.Elem() // The decoder dereferences pointers first.
+	}
 	return func(dec *Decoder) {
 		if dec.reg == nil {
 			dec.reg = make(decReg)
@@ -66,7 +71,18 @@ func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 			if err != nil {
 				return nil, err
 			}
-			return fn(val)
+			res, err := fn(val)
+			if err != nil || !isPtr {
+				return res, err
+			}
+			ptr := reflect.ValueOf(res)
+			if ptr.IsNil() {
+				const format = "%w: decoder returned nil %#q"
+				code := xrr.WithCode(ECInvValue)
+				name := ptr.Type().String()
+				return nil, xrr.Newf(format, ErrInvValue, name, code)
+			}
+			return ptr.Elem().Interface(), nil
 		}
 	}
 }
