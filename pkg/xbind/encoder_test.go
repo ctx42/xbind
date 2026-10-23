@@ -1756,6 +1756,55 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"a": {"a"}, "b": {"a"}}, dst)
 	})
 
+	t.Run("sub-slice of an encoded slice", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			L []node `url:"l"`
+			N int    `url:"n"`
+		}
+		dst := url.Values{}
+
+		s := make([]node, 2)
+		s[1].L = s[:1]
+
+		src := node{L: s}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"n":           {"0"},
+			"l[0].n":      {"0"},
+			"l[1].n":      {"0"},
+			"l[1].l[0].n": {"0"},
+		}
+		assert.Equal(t, want, dst)
+	})
+
+	t.Run("pointer to the first field", func(t *testing.T) {
+		// --- Given ---
+		type in struct {
+			N int `url:"n"`
+		}
+		type out struct {
+			F in  `url:"f"`
+			Q *in `url:"q"`
+		}
+		dst := url.Values{}
+
+		src := &out{F: in{N: 1}}
+		src.Q = &src.F
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"f.n": {"1"}, "q.n": {"1"}}, dst)
+	})
+
 	t.Run("field with pointer to own type", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

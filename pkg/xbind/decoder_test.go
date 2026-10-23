@@ -3082,6 +3082,23 @@ func Test_Decoder_required_tabular(t *testing.T) {
 	cyc := &TNode{}
 	cyc.Next = cyc
 
+	type lst struct {
+		L []lst  `url:"l"`
+		R string `url:"r,required"`
+	}
+	sub := make([]lst, 2)
+	sub[1].L = sub[:1]
+
+	type in struct {
+		N int `url:"n,required"`
+	}
+	type out struct {
+		F in  `url:"f"`
+		Q *in `url:"q"`
+	}
+	fst := &out{}
+	fst.Q = &fst.F
+
 	tt := []struct {
 		testN string
 
@@ -3138,6 +3155,18 @@ func Test_Decoder_required_tabular(t *testing.T) {
 				N: map[string][]TNode{"k": {{Req: "r"}, {}}},
 			},
 			[]string{"a[0].f_str", "m[7].f_str", "n[k][1].req", "p[1].f_str"},
+		},
+		{
+			"sub-slice of a walked slice",
+			&lst{L: sub},
+			[]string{"l[0].r", "l[1].l[0].r", "l[1].r", "r"},
+		},
+		{
+			"pointer to the first field",
+			&struct {
+				P *out `url:"p"`
+			}{P: fst},
+			[]string{"p.f.n", "p.q.n"},
 		},
 		{
 			"pointer cycle in elements",
