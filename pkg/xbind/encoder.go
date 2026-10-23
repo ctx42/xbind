@@ -356,7 +356,6 @@ func (enc *Encoder) encodeSlice(
 	lvl := enc.elemLevel(src.Type())
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
-		ipt := prefix + "[" + strconv.Itoa(i) + "]"
 		isVal := value
 		if value && itf && !val.IsNil() {
 			// The interface may hold a Marshaler, which is no value.
@@ -365,11 +364,13 @@ func (enc *Encoder) encodeSlice(
 		if isVal {
 			if ok, err := encSrc(dst, prefix, val, enc.reg, false); ok {
 				if err != nil {
+					ipt := prefix + "[" + strconv.Itoa(i) + "]"
 					return xrr.NewFieldError(ipt, err)
 				}
 				continue
 			}
 		}
+		ipt := prefix + "[" + strconv.Itoa(i) + "]" // Only indexed values.
 		if err := enc.encode(dst, ipt, val, seen, lvl); err != nil {
 			return err
 		}
