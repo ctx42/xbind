@@ -71,14 +71,15 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // promotion selects, as in [encoding/json]. Each exported field is added under
 // its path; the path of a nested struct field is the dotted list of names
 // leading to it. A [Marshaler] implemented by src, or by a struct embedded in
-// it, encodes the whole struct; an [encoding.TextMarshaler] implemented by src
-// adds its text under the empty key and the fields are not encoded. A nil
-// pointer or interface adds nothing: a nil field has no key, a map entry with a
-// nil key or value is left out, and a nil slice or array element has no value,
-// so the elements after it move up one place when decoded. A pointer to a
-// struct already being encoded, a pointer cycle, is an [ErrCycle] error keyed
-// by the field path of the repeated pointer, and a struct tag of src that does
-// not parse is an [ErrInvTag] error.
+// it, encodes the whole struct; [encoding.TextMarshaler] and functions
+// registered with [WithEncFunc] apply only to values with a key, so src and the
+// structs embedded in it are encoded field by field. A nil pointer or interface
+// adds nothing: a nil field has no key, a map entry with a nil key or value is
+// left out, and a nil slice or array element has no value, so the elements
+// after it move up one place when decoded. A pointer to a struct already being
+// encoded, a pointer cycle, is an [ErrCycle] error keyed by the field path of
+// the repeated pointer, and a struct tag of src that does not parse is an
+// [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
@@ -224,9 +225,11 @@ type ptrKey struct {
 // could not be found, true otherwise. When it returns true, check the error;
 // when it returns false, the error is always nil.
 //
-// It first checks if src, or its address, implements [Marshaler], then
-// [encoding.TextMarshaler]; lastly, it calls encFor to find an encoder. A nil
-// pointer or interface with an encoder adds nothing to dst and returns true.
+// It first checks for an encoder registered for the src type, then if src, or
+// its address, implements [Marshaler], then [encoding.TextMarshaler]; lastly,
+// it calls encFor to find an encoder. At the empty prefix only [Marshaler] is
+// used. A nil pointer or interface with an encoder adds nothing to dst and
+// returns true.
 func encSrc(
 	dst url.Values,
 	prefix string,
@@ -253,6 +256,16 @@ func encSrc(
 	}
 
 	typ := src.Type()
+	if prefix == "" {
+		// A value at the empty path is the src struct or a struct it embeds,
+		// never nil: only a Marshaler, which adds keys under the prefix,
+		// encodes it.
+		if !typ.Implements(iMarshaler) || !src.CanInterface() {
+			return false, nil
+		}
+		m := src.Interface().(Marshaler) //nolint:forcetypeassert
+		return true, m.MarshalValues(dst, prefix)
+	}
 	efn := reg.lookup(typ)
 	// The methods of a value read from an unexported field cannot be called.
 	if efn == nil && isMarshaler(typ) && src.CanInterface() {

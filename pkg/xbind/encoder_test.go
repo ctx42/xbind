@@ -1210,6 +1210,34 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, want, dst)
 	})
 
+	t.Run("embedded TextMarshaler does not hide fields", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := struct {
+			time.Time
+			Name string `url:"name"`
+		}{Time: time.Unix(1, 0), Name: "a"}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"name": {"a"}}, dst)
+	})
+
+	t.Run("registered struct type at the top level", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+
+		// --- When ---
+		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, TPoint{1, 2})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"X": {"1"}, "Y": {"2"}}, dst)
+	})
+
 	t.Run("outer field shadows embedded field", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -1558,12 +1586,30 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil)
+		have, err := encSrc(dst, "F", src, nil)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "non-printable ascii character", err)
 		assert.True(t, have)
 		assert.Equal(t, "", dst.Encode())
+	})
+
+	t.Run("text encoders not used at the empty path", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		enc := func(reflect.Value) (string, error) { return "point", nil }
+		reg := encReg{reflect.TypeFor[TPoint](): enc}
+
+		// --- When ---
+		hTxt, eTxt := encSrc(dst, "", reflect.ValueOf(TTextVal('A')), nil)
+		hReg, eReg := encSrc(dst, "", reflect.ValueOf(TPoint{}), reg)
+
+		// --- Then ---
+		assert.NoError(t, eTxt)
+		assert.False(t, hTxt)
+		assert.NoError(t, eReg)
+		assert.False(t, hReg)
+		assert.Empty(t, dst)
 	})
 
 	t.Run("error - custom encoder", func(t *testing.T) {
