@@ -1464,8 +1464,16 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 		zone := time.FixedZone("", off%1440*60)
 		tim := time.Unix(sec, nsec).In(zone)
 
+		var p *int64
+		var ps *string
+		if bln {
+			p, ps = &i64, &str
+		}
+
 		dst := url.Values{}
 		src := &TFuzzEnc{
+			TFuzzEmb: TFuzzEmb{S: mv, E: mv},
+
 			S:  str,
 			I:  i64,
 			U:  u64,
@@ -1477,10 +1485,13 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 			SS: []string{str, mv},
 			M:  map[string]string{mk: mv},
 			MK: map[TLevel]string{TLevel(lvl): mv},
+			P:  p,
+			PS: ps,
+			PT: TPoint{X: int(i64), Y: int(u64)},
 		}
 
 		// --- When ---
-		err := NewEncoder().Encode(dst, src)
+		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, src)
 
 		// --- Then ---
 		if mk == "" {
@@ -1489,9 +1500,12 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 			return
 		}
 		assert.NoError(t, err)
+		assert.Equal(t, []string{str}, dst["s"])
 
-		have := &TFuzzEnc{}
-		assert.NoError(t, NewDecoder().Decode(have, dst))
+		// Decoding replaces the slice already there.
+		have := &TFuzzEnc{SS: []string{"junk"}}
+		dec := NewDecoder(WithDecFunc(decPoint))
+		assert.NoError(t, dec.Decode(have, dst))
 		assert.True(t, have.T.Equal(src.T))
 		_, wOff := src.T.Zone()
 		_, hOff := have.T.Zone()
@@ -1499,6 +1513,7 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 		bothNaN := math.IsNaN(have.F) && math.IsNaN(src.F)
 		assert.True(t, have.F == src.F || bothNaN)
 		have.T, have.F, src.F = src.T, 0, 0
+		src.TFuzzEmb.S = "" // A shadowed field is not encoded.
 		assert.Equal(t, src, have)
 	})
 }

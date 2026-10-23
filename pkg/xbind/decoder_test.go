@@ -1608,13 +1608,14 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 	f.Add("d", "1h2m", "pl", "L3", false)
 	f.Add("f", "NaN", "u", "65535", false)
 	f.Add("Ign", "x", "b", "on", false)
+	f.Add("pt", "1,2", "e", "x", false)
 	f.Add("next.s", "x", "next.next.p", "1", false)
 
 	f.Fuzz(func(t *testing.T, k0, v0, k1, v1 string, unknown bool) {
 		// --- Given ---
-		dec := NewDecoder()
+		dec := NewDecoder(WithDecFunc(decPoint))
 		if unknown {
-			dec = NewDecoder(WithDecAllowUnknown())
+			dec = NewDecoder(WithDecFunc(decPoint), WithDecAllowUnknown())
 		}
 
 		dst := &TFuzzDec{}
@@ -1636,14 +1637,15 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 
 		// A decoded value is stable: it encodes to keys which decode to the
 		// same value.
+		pnt := NewEncoder(WithEncFunc(encPoint))
 		enc := url.Values{}
-		assert.NoError(t, NewEncoder().Encode(enc, dst))
+		assert.NoError(t, pnt.Encode(enc, dst))
 
 		again := &TFuzzDec{}
-		assert.NoError(t, NewDecoder().Decode(again, enc))
+		assert.NoError(t, NewDecoder(WithDecFunc(decPoint)).Decode(again, enc))
 
 		have := url.Values{}
-		assert.NoError(t, NewEncoder().Encode(have, again))
+		assert.NoError(t, pnt.Encode(have, again))
 		assert.Equal(t, enc, have)
 	})
 }

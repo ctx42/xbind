@@ -483,10 +483,19 @@ type TBuilder struct {
 	S string          `url:"s"`
 }
 
+// TFuzzEmb is embedded in the fuzz test types: their S field shadows its S
+// field, its E field has a key of its own.
+type TFuzzEmb struct {
+	S string `url:"s"`
+	E string `url:"e"`
+}
+
 // TFuzzDec is the destination of the decoder fuzz test: one field of every
-// supported kind of value, and a pointer to its own type.
+// supported kind of value, a field with a registered codec, an embedded
+// struct with a shadowed field, and a pointer to its own type.
 type TFuzzDec struct {
 	TRequired
+	TFuzzEmb
 
 	S    string            `url:"s"`
 	I    int8              `url:"i"`
@@ -503,12 +512,17 @@ type TFuzzDec struct {
 	L    TLevel            `url:"l"`
 	PL   *TLevel           `url:"pl"`
 	Sub  *TString          `url:"sub"`
+	PT   TPoint            `url:"pt"`
 	Next *TFuzzDec         `url:"next"`
 	Ign  string            `url:"-"`
 }
 
-// TFuzzEnc is the source of the encoder fuzz test.
+// TFuzzEnc is the source of the encoder fuzz test: one field of every
+// supported kind of value, pointers, a field with a registered codec, and an
+// embedded struct with a shadowed field.
 type TFuzzEnc struct {
+	TFuzzEmb
+
 	S  string            `url:"s"`
 	I  int64             `url:"i"`
 	U  uint64            `url:"u"`
@@ -520,4 +534,7 @@ type TFuzzEnc struct {
 	SS []string          `url:"ss"`
 	M  map[string]string `url:"m"`
 	MK map[TLevel]string `url:"mk"`
+	P  *int64            `url:"p"`
+	PS *string           `url:"ps"`
+	PT TPoint            `url:"pt"`
 }
