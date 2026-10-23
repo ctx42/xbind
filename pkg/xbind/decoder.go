@@ -405,7 +405,9 @@ func (dec *Decoder) apply(
 			return err
 		}
 		val := reflect.New(dst.Type().Elem()).Elem()
-		if cur := dst.MapIndex(key); cur.IsValid() {
+		// A value the key sets as a whole is new, so a pointer in the map
+		// keeps its pointee.
+		if cur := dst.MapIndex(key); cur.IsValid() && len(steps) > 1 {
 			val.Set(cur)
 		}
 		err = dec.apply(val, steps[1:], vls, reset, pth+stp.name)

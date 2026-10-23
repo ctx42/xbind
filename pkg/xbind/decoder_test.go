@@ -1415,6 +1415,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, map[string]string{"k": "v", "a.b": "y"}, dst.Attr)
 	})
 
+	t.Run("map value pointer is replaced", func(t *testing.T) {
+		// --- Given ---
+		def := "d"
+		dst := &struct {
+			M map[string]*string `url:"m"`
+		}{M: map[string]*string{"a": &def, "b": &def}}
+		src := url.Values{"m[a]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "x", *dst.M["a"])
+		assert.Equal(t, "d", *dst.M["b"])
+		assert.Equal(t, "d", def)
+	})
+
 	t.Run("map of plain values takes the rest of a key", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
