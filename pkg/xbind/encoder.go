@@ -87,9 +87,10 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // is not written either, so such a map entry, or such an element at the end of
 // a slice, does not decode back. A pointer to a struct already being encoded, a
 // pointer cycle, is an [ErrCycle] error keyed by the field path of the repeated
-// pointer, and a struct tag of src that does not parse is an [ErrInvTag] error.
-// On error, dst keeps the values encoded before the error, which may include
-// some values of the failing field.
+// pointer, and a struct tag of src that does not parse, or that names a field
+// with a bracket ("ids[]"), is an [ErrInvTag] error. On error, dst keeps the
+// values encoded before the error, which may include some values of the failing
+// field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
