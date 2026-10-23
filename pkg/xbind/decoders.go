@@ -18,7 +18,7 @@ type decFn func(vls ...string) (any, error)
 // decReg is a map of custom types to decoders.
 type decReg map[reflect.Type]decFn
 
-// Types with dedicated decoders and encoders.
+// Types with dedicated decoders; [time.Duration] also has a dedicated encoder.
 var (
 	typTime = reflect.TypeFor[time.Time]()
 	typDur  = reflect.TypeFor[time.Duration]()
