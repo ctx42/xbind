@@ -91,6 +91,11 @@ in the path; an untagged field uses its Go name.
 | `*Page` (a struct)  | `url:"page"` | `page.size=10`         |
 | embedded struct     | none         | the keys of its fields |
 
+When a struct and the structs it embeds have fields with the same key, the
+key names the field Go promotion selects, as in `encoding/json`: the
+shallowest one or, among equally shallow ones, the only one whose tag names
+it. A key no single field wins names no field.
+
 Tag options:
 
 | Option             | Effect                                            |

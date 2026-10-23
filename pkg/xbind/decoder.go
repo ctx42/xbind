@@ -76,22 +76,23 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 	return dec
 }
 
-// Decode sets the fields of the dst struct from src. The dst argument must be
-// a pointer to a struct. The src keys are paths to the dst fields in dotted
-// notation; the path of a map field ends with the map key. A tag name with a
-// dot never matches a key. Errors of the src values are returned as
-// [xrr.FieldErrors] keyed by the src keys; the other values are still set.
-// Decoded slice elements are appended to the elements dst already has; array
-// elements past the decoded values keep their values. A nil pointer to a
-// nested struct is allocated only when a src key leads into it. A field with
-// the "required" option is an [ErrRequired] error when it is empty after
-// decoding: a zero number, an empty string, slice or map, a nil pointer, or a
-// zero struct; a bool is never empty. The required fields of a nil struct
-// pointer, an absent struct, are not checked. A src
-// key leading into an embedded nil pointer to a struct, which the decoder
-// cannot allocate because the field is unexported, is an [ErrUnexported]
-// field error. A struct tag of dst that does not parse is an [ErrInvTag]
-// error. Pointers to pointers to structs are not supported.
+// Decode sets the fields of the dst struct from src. The dst argument must be a
+// pointer to a struct. The src keys are paths to the dst fields in dotted
+// notation; the path of a map field ends with the map key. Among the fields of
+// a struct and the structs it embeds, a key names the field Go promotion
+// selects, as in [encoding/json]. A tag name with a dot never matches a key.
+// Errors of the src values are returned as [xrr.FieldErrors] keyed by the src
+// keys; the other values are still set. Decoded slice elements are appended to
+// the elements dst already has; array elements past the decoded values keep
+// their values. A nil pointer to a nested struct is allocated only when a src
+// key leads into it. A field with the "required" option is an [ErrRequired]
+// error when it is empty after decoding: a zero number, an empty string, slice
+// or map, a nil pointer, or a zero struct; a bool is never empty. The required
+// fields of a nil struct pointer, an absent struct, are not checked. A src key
+// leading into an embedded nil pointer to a struct, which the decoder cannot
+// allocate because the field is unexported, is an [ErrUnexported] field error.
+// A struct tag of dst that does not parse is an [ErrInvTag] error. Pointers to
+// pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -129,7 +130,8 @@ func (dec *Decoder) decode(
 
 	// Go over src keys and match them with struct fields.
 	for pth, vls := range src {
-		res := dec.resolve("", strings.Split(pth, "."), dst, nil)
+		lvl := newLevel(dst.Type(), dec.tagName())
+		res := dec.resolve("", strings.Split(pth, "."), dst, nil, lvl)
 		if res.ignored {
 			continue
 		}
@@ -151,7 +153,8 @@ func (dec *Decoder) decode(
 	}
 
 	// A field with a value error keeps that error.
-	dec.required("", dst, map[ptrKey]bool{}, func(pth string, err error) {
+	lvl := newLevel(dst.Type(), dec.tagName())
+	dec.required("", dst, lvl, map[ptrKey]bool{}, func(pth string, err error) {
 		if ers == nil || ers.Get(pth) == nil {
 			setErr(pth, err)
 		}
@@ -161,12 +164,15 @@ func (dec *Decoder) decode(
 
 // resolve takes a path to a field and returns its value and its path. The
 // outer types are the structs embedding dst at the current path segment; an
-// embedded struct of one of them is skipped, so an embedding cycle ends.
+// embedded struct of one of them is skipped, so an embedding cycle ends. The
+// lvl is the level position of dst; a field is matched only by the key it
+// names there.
 func (dec *Decoder) resolve(
 	pth string,
 	remainder []string,
 	dst *mirror.StructValue,
 	outer []reflect.Type,
+	lvl level,
 ) result {
 
 	if len(remainder) == 0 {
@@ -190,7 +196,7 @@ func (dec *Decoder) resolve(
 				tmp := reflect.New(val.Type().Elem()).Interface()
 				sv = mirror.NewStructValue(tmp)
 			}
-			res := dec.resolve(pth, remainder, sv, outer)
+			res := dec.resolve(pth, remainder, sv, outer, lvl.embedded(i))
 			if !res.isZero() {
 				if unexported {
 					return result{pth: res.pth, unexported: true}
@@ -209,7 +215,7 @@ func (dec *Decoder) resolve(
 			ignored = true
 			continue
 		}
-		if !fld.IsExported() {
+		if !fld.IsExported() || !lvl.names(name, i) {
 			continue
 		}
 		fldPath := buildPath(pth, name)
@@ -231,7 +237,8 @@ func (dec *Decoder) resolve(
 			typ != typTime && dec.reg[typ] == nil {
 
 			sv := fv.NewIfNil().StructValue()
-			return dec.resolve(fldPath, remainder[1:], sv, nil)
+			nxt := newLevel(sv.Type(), dec.tagName())
+			return dec.resolve(fldPath, remainder[1:], sv, nil, nxt)
 		}
 		return result{dst: fv, pth: fldPath, remainder: remainder[1:]}
 	}
@@ -242,11 +249,13 @@ func (dec *Decoder) resolve(
 // of dst whose value is empty (see isEmpty). A nil struct pointer is an
 // absent struct, so its fields are not checked. Ignored fields and unexported
 // fields, other than embedded structs, are skipped; an embedded struct has no
-// path, so its required option is ignored. The seen map holds the struct
-// pointers on the path to dst, so a pointer cycle ends.
+// path, so its required option is ignored. The lvl is the level position of
+// dst; a field its key does not name there is skipped. The seen map holds
+// the struct pointers on the path to dst, so a pointer cycle ends.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
+	lvl level,
 	seen map[ptrKey]bool,
 	setErr func(string, error),
 ) {
@@ -273,7 +282,11 @@ func (dec *Decoder) required(
 			continue
 		}
 
-		fldPath := buildPath(prefix, tag.NameOrField())
+		name := tag.NameOrField()
+		if (!anon || !isStruct) && !lvl.names(name, i) {
+			continue
+		}
+		fldPath := buildPath(prefix, name)
 		if isStruct && (anon || !dec.isLeaf(fld.Value())) {
 			// The path to a field that comes from an embedded struct does
 			// not include the name of the embedded struct.
@@ -282,9 +295,13 @@ func (dec *Decoder) required(
 			} else if tag.Contains("required") && isEmpty(fld.Value()) {
 				setErr(fldPath, ErrRequired)
 			}
+			nxt := lvl.embedded(i)
+			if !anon {
+				nxt = newLevel(fld.Type(), dec.tagName())
+			}
 			val := fld.Value()
 			if val.Kind() != reflect.Pointer {
-				dec.required(fldPath, fld.StructValue(), seen, setErr)
+				dec.required(fldPath, fld.StructValue(), nxt, seen, setErr)
 				continue
 			}
 			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
@@ -292,7 +309,7 @@ func (dec *Decoder) required(
 				continue // An absent struct, or a pointer cycle.
 			}
 			seen[key] = true
-			dec.required(fldPath, fld.StructValue(), seen, setErr)
+			dec.required(fldPath, fld.StructValue(), nxt, seen, setErr)
 			delete(seen, key)
 			continue
 		}

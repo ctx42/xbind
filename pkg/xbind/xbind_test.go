@@ -117,3 +117,80 @@ func Test_checkTags_tabular(t *testing.T) {
 		})
 	}
 }
+
+func Test_newLevel_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want map[string][]int
+	}{
+		{
+			"fields",
+			reflect.TypeFor[TNode](),
+			map[string][]int{"val": {0}, "req": {1}, "next": {2}},
+		},
+		{
+			"outer field shadows embedded",
+			reflect.TypeFor[*struct {
+				TRequired
+				FStr string `url:"f_str"`
+			}](),
+			map[string][]int{"f_str": {1}, "f_int": {0, 1}},
+		},
+		{"ambiguous", reflect.TypeFor[TAmbig](), map[string][]int{"a": {0, 1}}},
+		{
+			"tagged wins",
+			reflect.TypeFor[TTagged](),
+			map[string][]int{"X": {0, 0}},
+		},
+		{"same type twice", reflect.TypeFor[TDouble](), map[string][]int{}},
+		{"embedding cycle", reflect.TypeFor[TCycle](), map[string][]int{}},
+		{
+			"skipped fields",
+			reflect.TypeFor[struct {
+				fmt.Stringer
+				A string `url:"-"`
+				b string
+			}](),
+			map[string][]int{},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := newLevel(tc.typ, "url")
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have.vis)
+			assert.Nil(t, have.idx)
+		})
+	}
+}
+
+func Test_level_names(t *testing.T) {
+	// --- Given ---
+	lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+
+	// --- When ---
+	have := lvl.names("a", 1)
+
+	// --- Then ---
+	assert.True(t, have)
+	assert.False(t, lvl.names("a", 0))
+	assert.False(t, lvl.names("b", 1))
+}
+
+func Test_level_embedded(t *testing.T) {
+	// --- Given ---
+	lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+
+	// --- When ---
+	have := lvl.embedded(1)
+
+	// --- Then ---
+	assert.Equal(t, []int{0, 1}, have.idx)
+	assert.Same(t, lvl.vis, have.vis)
+	assert.Equal(t, []int{0}, lvl.idx)
+}

@@ -371,7 +371,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 456, dst.FInt)
 	})
 
-	t.Run("field names overlap and tag name overlap", func(t *testing.T) {
+	t.Run("outer field shadows embedded field", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
 			TRequired
@@ -390,11 +390,57 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "abc", dst.TRequired.FStr)
-		assert.Equal(t, 123, dst.TRequired.FInt)
-		assert.Equal(t, "", dst.FStr)
+		assert.Equal(t, "", dst.TRequired.FStr)
+		assert.Equal(t, 0, dst.TRequired.FInt)
+		assert.Equal(t, "abc", dst.FStr)
 		assert.Exact(t, "2000-01-02T03:04:05Z", dst.FTime)
-		assert.Equal(t, 0, dst.FInt)
+		assert.Equal(t, 123, dst.FInt)
+	})
+
+	t.Run("outer field declared first shadows", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			FStr string `url:"f_str"`
+			TRequired
+		}{}
+		src := url.Values{"f_str": {"abc"}, "f_int": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "abc", dst.FStr)
+		assert.Equal(t, "", dst.TRequired.FStr)
+		assert.Equal(t, 1, dst.FInt)
+	})
+
+	t.Run("error - ambiguous fields at the same depth", func(t *testing.T) {
+		// --- Given ---
+		dst := &TAmbig{}
+		src := url.Values{"x": {"1"}, "a": {"2"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "x: invalid field path (ECUnkFieldPath)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, "2", dst.A)
+	})
+
+	t.Run("tagged field wins at the same depth", func(t *testing.T) {
+		// --- Given ---
+		dst := &TTagged{}
+		src := url.Values{"X": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "1", dst.TTagA.X)
+		assert.Equal(t, "", dst.TTagB.X)
 	})
 
 	t.Run("do not set an ignored field", func(t *testing.T) {
@@ -1627,7 +1673,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1643,7 +1695,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1661,7 +1719,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1682,7 +1746,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1704,7 +1774,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1724,7 +1800,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1743,7 +1825,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TString{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1766,7 +1854,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1789,7 +1883,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1809,7 +1909,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1828,7 +1934,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1846,7 +1958,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1864,7 +1982,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1881,7 +2005,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		}{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.False(t, have.isZero())
@@ -1899,7 +2029,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TUnexpNode{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.True(t, have.unexported)
@@ -1914,7 +2050,13 @@ func Test_Decoder_resolve(t *testing.T) {
 		s := &TUnexpNode{}
 
 		// --- When ---
-		have := NewDecoder().resolve("", pth, mirror.NewStructValue(s), nil)
+		have := NewDecoder().resolve(
+			"",
+			pth,
+			mirror.NewStructValue(s),
+			nil,
+			newLevel(reflect.TypeOf(s), "url"),
+		)
 
 		// --- Then ---
 		assert.True(t, have.isZero())
@@ -2009,6 +2151,7 @@ func Test_Decoder_required_tabular(t *testing.T) {
 			NewDecoder().required(
 				"",
 				mirror.NewStructValue(tc.dst),
+				newLevel(reflect.TypeOf(tc.dst), "url"),
 				map[ptrKey]bool{},
 				setErr,
 			)

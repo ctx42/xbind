@@ -66,17 +66,19 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 }
 
 // Encode encodes the src struct, or a pointer to it, into dst; a nil dst is the
-// [ErrNilDst] error and any other src the [ErrReqStruct] error. Each exported
-// field is added under its path; the path of a nested struct field is the
-// dotted list of names leading to it. A [Marshaler] implemented by src, or by a
-// struct embedded in it, encodes the whole struct; an [encoding.TextMarshaler]
-// implemented by src adds its text under the empty key and the fields are not
-// encoded. A nil pointer or interface adds nothing: a nil field has no key, a
-// map entry with a nil key or value is left out, and a nil slice or array
-// element has no value, so the elements after it move up one place when
-// decoded. A pointer to a struct already being encoded, a pointer cycle, is an
-// [ErrCycle] error keyed by the field path of the repeated pointer, and a
-// struct tag of src that does not parse is an [ErrInvTag] error.
+// [ErrNilDst] error and any other src the [ErrReqStruct] error. Among the
+// fields of a struct and the structs it embeds, a key names the field Go
+// promotion selects, as in [encoding/json]. Each exported field is added under
+// its path; the path of a nested struct field is the dotted list of names
+// leading to it. A [Marshaler] implemented by src, or by a struct embedded in
+// it, encodes the whole struct; an [encoding.TextMarshaler] implemented by src
+// adds its text under the empty key and the fields are not encoded. A nil
+// pointer or interface adds nothing: a nil field has no key, a map entry with a
+// nil key or value is left out, and a nil slice or array element has no value,
+// so the elements after it move up one place when decoded. A pointer to a
+// struct already being encoded, a pointer cycle, is an [ErrCycle] error keyed
+// by the field path of the repeated pointer, and a struct tag of src that does
+// not parse is an [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
@@ -98,7 +100,7 @@ func (enc *Encoder) Encode(dst url.Values, src any) error {
 		ptr.Elem().Set(val)
 		val = ptr
 	}
-	return enc.encode(dst, "", val, map[ptrKey]bool{})
+	return enc.encode(dst, "", val, map[ptrKey]bool{}, level{})
 }
 
 // tagName returns the name of the struct tag the encoder reads.
@@ -111,11 +113,14 @@ func (enc *Encoder) tagName() string {
 
 // encode encodes src to dst under the field path. The seen map holds the
 // pointers on the path to src; meeting one of them again is a pointer cycle.
+// The lvl is the level position of an embedded struct src; for any other src
+// it is the zero level.
 func (enc *Encoder) encode(
 	dst url.Values,
 	field string,
 	src reflect.Value,
 	seen map[ptrKey]bool,
+	lvl level,
 ) error {
 
 	if ok, err := encSrc(dst, field, src, enc.reg); ok {
@@ -146,7 +151,7 @@ func (enc *Encoder) encode(
 		return encMap(dst, field, src, enc.reg)
 
 	case reflect.Struct:
-		return enc.encodeFields(dst, field, src, seen)
+		return enc.encodeFields(dst, field, src, seen, lvl)
 
 	default:
 		return fieldError(field, encNotFound(src.Type()))
@@ -154,14 +159,20 @@ func (enc *Encoder) encode(
 }
 
 // encodeFields encodes the fields of the src struct to dst under the field
-// path. The seen map is passed to the encode method.
+// path. The seen map is passed to the encode method. The lvl is the level
+// position of src, the zero level for a struct starting a level; a field its
+// key does not name there is skipped.
 func (enc *Encoder) encodeFields(
 	dst url.Values,
 	field string,
 	src reflect.Value,
 	seen map[ptrKey]bool,
+	lvl level,
 ) error {
 
+	if lvl.vis == nil {
+		lvl = newLevel(src.Type(), enc.tagName())
+	}
 	md := mirror.NewTypeMetadata(src.Type())
 	for i := 0; i < src.NumField(); i++ {
 		fld := md.FieldByIndex(i)
@@ -183,17 +194,19 @@ func (enc *Encoder) encodeFields(
 				continue
 			}
 			// The fields of an embedded struct belong to the outer struct.
-			if err := enc.encode(dst, field, val, seen); err != nil {
+			err := enc.encode(dst, field, val, seen, lvl.embedded(i))
+			if err != nil {
 				return err
 			}
 			continue
 		}
-		if !fld.IsExported() {
+		name := tag.NameOrField()
+		if !fld.IsExported() || !lvl.names(name, i) {
 			continue
 		}
 
-		fldPath := buildPath(field, tag.NameOrField())
-		if err := enc.encode(dst, fldPath, val, seen); err != nil {
+		fldPath := buildPath(field, name)
+		if err := enc.encode(dst, fldPath, val, seen, level{}); err != nil {
 			return err
 		}
 	}

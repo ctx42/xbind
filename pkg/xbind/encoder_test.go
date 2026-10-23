@@ -1210,6 +1210,36 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, want, dst)
 	})
 
+	t.Run("outer field shadows embedded field", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			TRequired
+			FStr string `url:"f_str"`
+		}{TRequired: TRequired{FStr: "in", FInt: 2}, FStr: "out"}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{"f_str": {"out"}, "f_int": {"2"}}
+		assert.Equal(t, want, dst)
+	})
+
+	t.Run("ambiguous fields are not encoded", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &TAmbig{TAmbA: TAmbA{X: "1", A: "2"}, TAmbB: TAmbB{X: "3"}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"a": {"2"}}, dst)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- When ---
 		err := NewEncoder().Encode(url.Values{}, badTag(`url:n`, false))

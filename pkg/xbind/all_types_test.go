@@ -392,6 +392,51 @@ func (tvl TValuer) Value() (driver.Value, error) {
 	return string(tvl), nil
 }
 
+// TAmbA and TAmbB both have an X field with the same key, so a struct
+// embedding both has no field for the key x.
+type TAmbA struct {
+	X string `url:"x"`
+	A string `url:"a"`
+}
+
+// TAmbB is the second half of [TAmbA].
+type TAmbB struct {
+	X string `url:"x"`
+}
+
+// TAmbig embeds [TAmbA] and [TAmbB] at the same depth.
+type TAmbig struct {
+	TAmbA
+	TAmbB
+}
+
+// TTagA has an X field whose tag names it; [TTagB] has an untagged one.
+type TTagA struct {
+	X string `url:"X"`
+}
+
+// TTagB has an untagged X field.
+type TTagB struct{ X string }
+
+// TTagged embeds [TTagA] and [TTagB] at the same depth; the tagged field
+// names the key X.
+type TTagged struct {
+	TTagA
+	TTagB
+}
+
+// TWrapA embeds [TAmbB]; with [TWrapB] it puts TAmbB twice at one depth.
+type TWrapA struct{ TAmbB }
+
+// TWrapB embeds [TAmbB].
+type TWrapB struct{ TAmbB }
+
+// TDouble embeds [TAmbB] twice at depth two, so its X field is ambiguous.
+type TDouble struct {
+	TWrapA
+	TWrapB
+}
+
 // TPoint is a struct decoded and encoded as one "X,Y" value by the functions
 // decPoint and encPoint.
 type TPoint struct{ X, Y int }
