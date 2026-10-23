@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ctx42/testing/pkg/assert"
+	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/testkit/pkg/reflectkit"
 	"github.com/ctx42/xrr/pkg/xrr/xrrtest"
 )
@@ -40,9 +41,7 @@ func Test_WithEncFunc(t *testing.T) {
 
 	// --- Then ---
 	fn := enc.reg[reflect.TypeFor[TPoint]()]
-	have, err := fn(reflect.ValueOf(TPoint{X: 1, Y: 2}))
-	assert.NoError(t, err)
-	assert.Equal(t, "1,2", have)
+	assert.Equal(t, "1,2", must.Value(fn(reflect.ValueOf(TPoint{X: 1, Y: 2}))))
 }
 
 func Test_NewEncoder(t *testing.T) {
