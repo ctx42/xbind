@@ -122,9 +122,7 @@ func encString(v reflect.Value) (string, error) {
 }
 
 // encDur encodes a [time.Duration] [reflect.Value] to a string.
+// It panics if the kind of v is not Int64.
 func encDur(v reflect.Value) (string, error) {
-	if dur, ok := v.Interface().(time.Duration); ok {
-		return dur.String(), nil
-	}
-	return "", nil
+	return time.Duration(v.Int()).String(), nil
 }

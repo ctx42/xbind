@@ -347,12 +347,15 @@ func Test_encDur(t *testing.T) {
 		assert.Equal(t, "0s", have)
 	})
 
-	t.Run("not duration", func(t *testing.T) {
+	t.Run("unexported field", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf(struct{ d time.Duration }{time.Second}).Field(0)
+
 		// --- When ---
-		have, err := encDur(reflect.ValueOf(123))
+		have, err := encDur(val)
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "", have)
+		assert.Equal(t, "1s", have)
 	})
 }
