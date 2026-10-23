@@ -128,7 +128,7 @@ A required field is empty when it is a zero number, an empty string, slice or
 map, a nil pointer or a pointer to an empty value, or a struct whose fields are
 all zero; a `bool` is never empty. The fields of a nil struct pointer are not
 checked. `omitempty` skips a zero value, `false` and a nil pointer included, an
-empty slice or map, and a value whose `IsZero` method reports it zero.
+empty slice or map, and a struct whose `IsZero` method reports it zero.
 
 A different tag name is set with `WithDecTag` and `WithEncTag`.
 
