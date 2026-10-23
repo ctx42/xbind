@@ -510,6 +510,8 @@ func Test_decInt8_tabular(t *testing.T) {
 		want int8
 	}{
 		{"positive", []string{"1"}, 1},
+		{"min", []string{"-128"}, -128},
+		{"max", []string{"127"}, 127},
 	}
 
 	for _, tc := range tt {
@@ -547,14 +549,11 @@ func Test_decInt16(t *testing.T) {
 	})
 
 	t.Run("error - out of range value", func(t *testing.T) {
-		// --- Given ---
-		outOfRange := strings.Repeat("1", 20)
-
 		// --- When ---
-		_, err := decInt16(outOfRange)
+		_, err := decInt16("32768")
 
 		// --- Then ---
-		want := "invalid value: cannot convert `" + outOfRange + "` to int16"
+		want := "invalid value: cannot convert `32768` to int16"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvValue, err)
 		xrrtest.AssertCode(t, ECInvValue, err)
@@ -579,6 +578,8 @@ func Test_decInt16_tabular(t *testing.T) {
 		want int16
 	}{
 		{"positive", []string{"1"}, 1},
+		{"min", []string{"-32768"}, -32768},
+		{"max", []string{"32767"}, 32767},
 	}
 
 	for _, tc := range tt {
@@ -616,14 +617,11 @@ func Test_decInt32(t *testing.T) {
 	})
 
 	t.Run("error - out of range value", func(t *testing.T) {
-		// --- Given ---
-		outOfRange := strings.Repeat("1", 20)
-
 		// --- When ---
-		_, err := decInt32(outOfRange)
+		_, err := decInt32("2147483648")
 
 		// --- Then ---
-		want := "invalid value: cannot convert `" + outOfRange + "` to int32"
+		want := "invalid value: cannot convert `2147483648` to int32"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvValue, err)
 		xrrtest.AssertCode(t, ECInvValue, err)
@@ -648,6 +646,8 @@ func Test_decInt32_tabular(t *testing.T) {
 		want int32
 	}{
 		{"positive", []string{"1"}, 1},
+		{"min", []string{"-2147483648"}, -2147483648},
+		{"max", []string{"2147483647"}, 2147483647},
 	}
 
 	for _, tc := range tt {
@@ -872,6 +872,7 @@ func Test_decUint8_tabular(t *testing.T) {
 		want uint8
 	}{
 		{"positive", []string{"1"}, 1},
+		{"max", []string{"255"}, 255},
 	}
 
 	for _, tc := range tt {
@@ -921,12 +922,10 @@ func Test_decUint16(t *testing.T) {
 
 	t.Run("error - out of range value", func(t *testing.T) {
 		// --- When ---
-		_, err := decUint16("1000000000000000000000")
+		_, err := decUint16("65536")
 
 		// --- Then ---
-		want := "" +
-			"invalid value: cannot convert " +
-			"`1000000000000000000000` to uint16"
+		want := "invalid value: cannot convert `65536` to uint16"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvValue, err)
 		xrrtest.AssertCode(t, ECInvValue, err)
@@ -951,6 +950,7 @@ func Test_decUint16_tabular(t *testing.T) {
 		want uint16
 	}{
 		{"positive", []string{"1"}, 1},
+		{"max", []string{"65535"}, 65535},
 	}
 
 	for _, tc := range tt {
@@ -1000,12 +1000,10 @@ func Test_decUint32(t *testing.T) {
 
 	t.Run("error - out of range value", func(t *testing.T) {
 		// --- When ---
-		_, err := decUint32("1000000000000000000000")
+		_, err := decUint32("4294967296")
 
 		// --- Then ---
-		want := "" +
-			"invalid value: cannot convert " +
-			"`1000000000000000000000` to uint32"
+		want := "invalid value: cannot convert `4294967296` to uint32"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvValue, err)
 		xrrtest.AssertCode(t, ECInvValue, err)
@@ -1030,6 +1028,7 @@ func Test_decUint32_tabular(t *testing.T) {
 		want uint32
 	}{
 		{"positive", []string{"1"}, 1},
+		{"max", []string{"4294967295"}, 4294967295},
 	}
 
 	for _, tc := range tt {
