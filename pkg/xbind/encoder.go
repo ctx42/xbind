@@ -70,16 +70,20 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // [ErrNilDst] error and any other src the [ErrReqStruct] error. Among the
 // fields of a struct and the structs it embeds, a key names the field Go
 // promotion selects, as in [encoding/json]. Each exported field is added under
-// its path; the path of a nested struct field is the dotted list of names
-// leading to it. A [Marshaler] implemented by src, or by a struct embedded in
-// it, encodes the whole struct; [encoding.TextMarshaler] and functions
-// registered with [WithEncFunc] apply only to values with a key, so src and the
-// structs embedded in it are encoded field by field. A nil pointer or interface
-// adds nothing: a nil field has no key, a map entry with a nil key or value is
-// left out, and a nil slice or array element has no value, so the elements
-// after it move up one place when decoded. A pointer to a struct already being
-// encoded, a pointer cycle, is an [ErrCycle] error keyed by the field path of
-// the repeated pointer, and a struct tag of src that does not parse is an
+// its path, written as [Decoder.Decode] reads it: struct field names after a
+// dot, or in brackets when they contain one; map keys, and the indexes of slice
+// and array elements that are structs, maps or [Marshaler] values, in brackets
+// ("attr[k]", "list[0].name"); other slice and array elements as values of one
+// key. A map key that is empty or holds a bracket is an [ErrInvValue] error. A
+// [Marshaler] implemented by src, or by a struct embedded in it, encodes the
+// whole struct; [encoding.TextMarshaler] and functions registered with
+// [WithEncFunc] apply only to values with a key, so src and the structs
+// embedded in it are encoded field by field. A nil pointer or interface adds
+// nothing: a nil field has no key, a map entry with a nil key or value is left
+// out, and a nil slice or array element has no value, so the elements after it
+// move up one place when decoded. A pointer to a struct already being encoded,
+// a pointer cycle, is an [ErrCycle] error keyed by the field path of the
+// repeated pointer, and a struct tag of src that does not parse is an
 // [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.

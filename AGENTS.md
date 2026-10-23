@@ -41,14 +41,17 @@ All source is in `pkg/xbind/`.
   `checkTags` (rejects tags that do not parse, run first by `Decode` and
   `Encode`), and `level`/`newLevel` (which field each key names).
 - **`decoder.go`** — `Decoder`, its options (`WithDecTag`,
-  `WithDecAllowUnknown`, `WithDecFunc`). `decode` resolves every src key with
-  `resolve`, sets the field (`setField`, `setDst`, `setSliceOrArray`,
-  `setMap`), then runs the `required` walk over `dst`.
+  `WithDecAllowUnknown`, `WithDecMaxIndex`, `WithDecFunc`). `decode` splits
+  every src key into segments (`parseKey`), turns them into steps by type
+  without side effects (`plan`), performs the steps on `dst` (`apply`, which
+  allocates, writes map values back and resets slices once per call), then
+  runs the `required` walk (`required`, `requiredIn`) over `dst`.
 - **`decoders.go`** — built-in decoders for base kinds, `time.Time` and
   `time.Duration`; `decFor` looks in the registry first.
 - **`encoder.go`** — `Encoder`, its options (`WithEncTag`, `WithEncFunc`).
-  `encode` walks values; `encSrc` encodes one value: registered function,
-  then `Marshaler`, then `TextMarshaler`, then `encFor`.
+  `encode` walks values (`encodeFields`, `encodeSlice`, `encodeMap`);
+  `encSrc` encodes one value: registered function, then `Marshaler`, then
+  `TextMarshaler`, then `encFor`.
 - **`encoders.go`** — built-in encoders and `encReg.lookup`.
 - **`json.go`** — `UnmarshalJSON`, `UnmarshalJSONReader`,
   `UnmarshalJSONBody`, and `HUE`/`MaybeHUE`, which translate `encoding/json`
@@ -58,6 +61,10 @@ All source is in `pkg/xbind/`.
 
 ## Invariants
 
+- Key syntax: struct field names after dots, map keys and slice or array
+  indexes in brackets (`page.size`, `attr[k]`, `list[0].name`); a bracketed
+  segment may contain dots. The encoder writes exactly what the decoder reads;
+  the decoder also accepts `attr.a.b` for a map of values and `list.0`.
 - `Encode` output decodes back with `Decode` to the same value; the fuzz
   tests in `decoder_test.go` and `encoder_test.go` check it. Keep the two
   sides symmetric.

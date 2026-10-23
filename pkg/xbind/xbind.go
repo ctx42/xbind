@@ -10,19 +10,21 @@
 //	type Query struct {
 //		Name  string            `url:"name,required"`  // Must not be empty.
 //		Tags  []string          `url:"tag"`            // Repeated key.
-//		Attrs map[string]string `url:"attr"`           // Keys attr.<key>.
+//		Attrs map[string]string `url:"attr"`           // Keys attr[<key>].
 //		Page  *Page             `url:"page"`           // Keys page.<field>.
 //		Note  string            `url:"note,omitempty"` // Skipped when empty.
 //		Skip  int               `url:"-"`              // Never bound.
 //	}
 //
-// A key is the dotted path to a field: the fields of a nested struct are
-// prefixed by the key of the struct field, map entries by the key of the map
-// field, and the fields of embedded structs belong to the outer struct.
-// Slices and arrays take one key with many values. Supported are bool,
-// string, the int, uint (except uintptr) and float kinds, their named
-// variants, [time.Time] (RFC 3339), [time.Duration], and types implementing
-// [encoding.TextUnmarshaler] / [encoding.TextMarshaler] or [Marshaler].
+// A key is the path to a field: struct field names after dots, map keys and
+// slice or array indexes in brackets ("page.size", "attr[color]",
+// "list[0].size"); the fields of embedded structs belong to the outer struct.
+// A slice or array of values takes one key with many values; maps, slices
+// and arrays of structs, and any nesting of them, are supported. The value
+// types are bool, string, the int, uint (except uintptr) and float kinds,
+// their named variants, [time.Time] (RFC 3339), [time.Duration], and types
+// implementing [encoding.TextUnmarshaler] / [encoding.TextMarshaler] or
+// [Marshaler].
 //
 // [UnmarshalJSON], [UnmarshalJSONReader] and [UnmarshalJSONBody] decode JSON
 // bodies strictly (unknown fields and trailing data are errors) and translate

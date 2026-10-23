@@ -83,16 +83,27 @@ fmt.Println(dst.Name, dst.Tags, dst.Attrs, dst.Since.Year(), *dst.Page)
 
 ### Keys and tags
 
-A key is the dotted path to a field. The `url` tag sets the name of a field
-in the path; an untagged field uses its Go name.
+A key is the path to a field: struct field names after dots, map keys and
+slice indexes in brackets. The `url` tag sets the name of a field; an untagged
+field uses its Go name.
 
-| Field type          | Tag          | Keys                   |
-|---------------------|--------------|------------------------|
-| `string`            | `url:"name"` | `name=x`               |
-| `[]string`          | `url:"tag"`  | `tag=a&tag=b`          |
-| `map[string]string` | `url:"attr"` | `attr.color=red`       |
-| `*Page` (a struct)  | `url:"page"` | `page.size=10`         |
-| embedded struct     | none         | the keys of its fields |
+| Field type          | Tag               | Keys                   |
+|---------------------|-------------------|------------------------|
+| `string`            | `url:"name"`      | `name=x`               |
+| `[]string`          | `url:"tag"`       | `tag=a&tag=b`          |
+| `map[string]string` | `url:"attr"`      | `attr[color]=red`      |
+| `*Page` (a struct)  | `url:"page"`      | `page.size=10`         |
+| `[]Item` (structs)  | `url:"items"`     | `items[0].name=x`      |
+| `map[string]Item`   | `url:"byid"`      | `byid[a1].name=x`      |
+| `int`               | `url:"page.size"` | `[page.size]=10`       |
+| embedded struct     | none              | the keys of its fields |
+
+Brackets may hold dots, so map keys and tag names with dots work. The decoder
+also reads `attr.color` for a map of values, taking the rest of the key as the
+map key, and `items.0.name` for an index. An index above 1000 is an error
+unless `WithDecMaxIndex` sets another limit. The first key reaching a slice
+replaces it, indexed keys fill it whatever their order, and keys are added to
+an existing map.
 
 When a struct and the structs it embeds have fields with the same key, the
 key names the field Go promotion selects, as in `encoding/json`: the

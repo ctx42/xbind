@@ -90,22 +90,30 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 }
 
 // Decode sets the fields of the dst struct from src. The dst argument must be a
-// pointer to a struct. The src keys are paths to the dst fields in dotted
-// notation; the path of a map field ends with the map key. Among the fields of
+// pointer to a struct. The src keys are paths to the dst fields: struct field
+// names follow a dot, and map keys and slice or array indexes go in brackets
+// ("page.size", "attr[k]", "list[0].name"); a bracketed segment may contain
+// dots, so "[page.size]" names a field tagged page.size. A map of values also
+// takes the rest of a key after a dot as its key ("attr.a.b"), and an index may
+// follow a dot ("list.0"). An index over [DefaultMaxIndex], or the limit
+// [WithDecMaxIndex] sets, is an [ErrInvValue] field error. Among the fields of
 // a struct and the structs it embeds, a key names the field Go promotion
-// selects, as in [encoding/json]. A tag name with a dot never matches a key.
-// Errors of the src values are returned as [xrr.FieldErrors] keyed by the src
-// keys; the other values are still set. A key replaces the slice it sets, and
-// zeroes the array elements past its values; a field with no key keeps its
-// value. A nil pointer to a nested struct is allocated only when a src key
-// leads into it. A field with the "required" option is an [ErrRequired] error
-// when it is empty after decoding: a zero number, an empty string, slice or
-// map, a nil pointer, or a zero struct; a bool is never empty. The required
-// fields of a nil struct pointer, an absent struct, are not checked. A src key
-// leading into an embedded nil pointer to a struct, which the decoder cannot
-// allocate because the field is unexported, is an [ErrUnexported] field error.
-// A struct tag of dst that does not parse is an [ErrInvTag] error. Pointers to
-// pointers to structs are not supported.
+// selects, as in [encoding/json]. Errors of the src values are returned as
+// [xrr.FieldErrors] keyed by the src keys; the other values are still set. The
+// first key reaching a slice or an array replaces it: the values of one key
+// replace the elements, indexed keys fill a new slice whose gaps are zero
+// values, and array elements no key sets are zeroed; a field with no key keeps
+// its value. Keys are added to an existing map, and the values of a map are
+// updated in place. A nil pointer to a nested struct is allocated only when a
+// src key leads into it. A field with the "required" option is an [ErrRequired]
+// error when it is empty after decoding: a zero number, an empty string, slice
+// or map, a nil pointer, or a zero struct; a bool is never empty. The required
+// fields of a nil struct pointer, an absent struct, are not checked; those of
+// the structs in maps, slices and arrays are, under paths like "items[k].name".
+// A src key leading into an embedded nil pointer to a struct, which the decoder
+// cannot allocate because the field is unexported, is an [ErrUnexported] field
+// error. A struct tag of dst that does not parse is an [ErrInvTag] error.
+// Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
