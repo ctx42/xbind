@@ -84,15 +84,9 @@ func Test_UnmarshalJSON(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrTimeFormat, err)
 		assert.ErrorIs(t, ErrBind, err)
-		want := `
-		{
-			"error": "binding error",
-			"code": "ECBinding",
-			"errors": [
-				{"code": "ECInvTimeFormat", "error": "invalid RFC3339 time"}
-			]
-		}`
-		assert.JSON(t, want, string(jsonkit.To(t, err)))
+		// The text of the cause the time error wraps depends on Go version.
+		want := `{"code":"ECInvTimeFormat","error":"invalid RFC3339 time; `
+		assert.Contain(t, want, string(jsonkit.To(t, err)))
 	})
 
 	t.Run("error - string for int", func(t *testing.T) {
@@ -566,6 +560,7 @@ func Test_MaybeHUE(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrTimeFormat, err)
 		assert.ErrorIs(t, ErrBind, err)
+		assert.ErrorIs(t, ute, err)
 		assert.True(t, have)
 	})
 
@@ -580,6 +575,7 @@ func Test_MaybeHUE(t *testing.T) {
 		assert.True(t, have)
 		assert.ErrorIs(t, ErrTimeFormat, err)
 		assert.ErrorIs(t, ErrBind, err)
+		assert.ErrorIs(t, e, err)
 	})
 
 	t.Run("time ParseError", func(t *testing.T) {
@@ -592,15 +588,11 @@ func Test_MaybeHUE(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrTimeFormat, err)
 		assert.ErrorIs(t, ErrBind, err)
-		want := `
-		{
-			"code":"ECBinding",
-			"error":"binding error",
-			"errors":[
-				{"code":"ECInvTimeFormat","error":"invalid RFC3339 time"}
-			]
-		}`
-		assert.JSON(t, want, string(jsonkit.To(t, err)))
+		assert.ErrorIs(t, pe, err)
+		want := "" +
+			`{"code":"ECInvTimeFormat","error":"invalid RFC3339 time; ` +
+			`parsing time \"2022\" as `
+		assert.Contain(t, want, string(jsonkit.To(t, err)))
 		assert.True(t, have)
 	})
 

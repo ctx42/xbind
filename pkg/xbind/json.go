@@ -91,7 +91,7 @@ func MaybeHUE(err error) (bool, error) {
 		// is reported as a type error instead of the error returned by
 		// time.Time.UnmarshalJSON.
 		if ute.Type != nil && indirect(ute.Type) == typTime {
-			return true, xrr.Envelop(ErrTimeFormat, ErrBind)
+			return true, timeError(err)
 		}
 		if ute.Field != "" {
 			ue := xrr.NewFieldError(ute.Field, ErrType)
@@ -112,7 +112,7 @@ func MaybeHUE(err error) (bool, error) {
 	}
 
 	if _, ok := errors.AsType[*time.ParseError](err); ok {
-		return true, xrr.Envelop(ErrTimeFormat, ErrBind)
+		return true, timeError(err)
 	}
 
 	// Before the time check: the field name may hold its text.
@@ -123,7 +123,7 @@ func MaybeHUE(err error) (bool, error) {
 	// Since Go 1.20 time.Time.UnmarshalJSON returns errors other than
 	// *time.ParseError for some invalid inputs.
 	if strings.Contains(err.Error(), "Time.UnmarshalJSON") {
-		return true, xrr.Envelop(ErrTimeFormat, ErrBind)
+		return true, timeError(err)
 	}
 
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
@@ -134,6 +134,13 @@ func MaybeHUE(err error) (bool, error) {
 	// Do not wrap unrecognized errors - they may be caused by reasons other
 	// than binding or invalid JSON.
 	return false, err
+}
+
+// timeError returns an [ErrTimeFormat] error wrapping err, enveloped with
+// [ErrBind].
+func timeError(err error) error {
+	code := xrr.WithCode(ECInvTimeFormat)
+	return xrr.Envelop(xrr.Newf("%w: %w", ErrTimeFormat, err, code), ErrBind)
 }
 
 // jsonType returns the name of the JSON type a value of type typ decodes from.
