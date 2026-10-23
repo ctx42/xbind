@@ -1730,7 +1730,12 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		xrrtest.AssertFieldCnt(t, 2, err)
+		want := "" +
+			"items[a].size: invalid value: cannot convert `x` to int " +
+			"(ECInvValue); " +
+			"items[b].size: invalid value: cannot convert `x` to int " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, map[string]TItem{"a": {Size: 1}}, dst.Items)
 	})
 
@@ -2680,7 +2685,7 @@ func Test_Decoder_apply(t *testing.T) {
 		err := NewDecoder().apply(dst, stp, []string{"x"}, stt, "")
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrInvValue, err)
+		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
 		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
 	})
 }
