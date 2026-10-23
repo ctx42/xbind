@@ -1567,6 +1567,23 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, map[string]TItem{"a": {Size: 1}}, dst.Items)
 	})
 
+	t.Run("error - failed index adds no elements", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			List []TRequired `url:"list"`
+		}{}
+		src := url.Values{"list[2].f_int": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "list[2].f_int: invalid value: cannot convert `x` to int " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 0, dst.List)
+	})
+
 	t.Run("index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2218,6 +2235,45 @@ func Test_Decoder_index_errors_tabular(t *testing.T) {
 	}
 }
 
+func Test_newState(t *testing.T) {
+	// --- When ---
+	have := newState()
+
+	// --- Then ---
+	assert.NotNil(t, have.reset)
+	assert.Len(t, 0, have.reset)
+	assert.Nil(t, have.log)
+}
+
+func Test_state_markReset(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+
+	// --- When ---
+	stt.markReset("a")
+	stt.markReset("b")
+	stt.markReset("a")
+
+	// --- Then ---
+	assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
+	assert.Equal(t, []string{"a", "b"}, stt.log)
+}
+
+func Test_state_undo(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	stt.markReset("a")
+	stt.markReset("b")
+	stt.markReset("c")
+
+	// --- When ---
+	stt.undo(1)
+
+	// --- Then ---
+	assert.Equal(t, map[string]bool{"a": true}, stt.reset)
+	assert.Equal(t, []string{"a"}, stt.log)
+}
+
 func Test_Decoder_apply(t *testing.T) {
 	t.Run("error - unexported nil pointer", func(t *testing.T) {
 		// --- Given ---
@@ -2225,10 +2281,48 @@ func Test_Decoder_apply(t *testing.T) {
 		stp := []step{{kind: stepField, idx: []int{0}, name: "size"}}
 
 		// --- When ---
-		err := NewDecoder().apply(dst, stp, []string{"1"}, nil, "")
+		err := NewDecoder().apply(dst, stp, []string{"1"}, newState(), "")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
+	})
+
+	t.Run("failed key into a map entry undoes its reset", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder()
+		m := map[string][]int{"k": {9, 9, 9}}
+		dst := reflect.ValueOf(&m).Elem()
+		stt := newState()
+		key := step{kind: stepKey, key: "k", name: "[k]"}
+		bad := []step{key, {kind: stepIndex, pos: 1, name: "[1]"}}
+		_ = dec.apply(dst, bad, []string{"abc"}, stt, "") // Fails on abc.
+		stp := []step{key, {kind: stepIndex, pos: 0, name: "[0]"}}
+
+		// --- When ---
+		err := dec.apply(dst, stp, []string{"1"}, stt, "")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[string][]int{"k": {1}}, m)
+	})
+
+	t.Run("error - failed key adds no slice elements", func(t *testing.T) {
+		// --- Given ---
+		s := []TRequired{{FStr: "a"}}
+		dst := reflect.ValueOf(&s).Elem()
+		stt := newState()
+		stt.markReset("")
+		stp := []step{
+			{kind: stepIndex, pos: 3, name: "[3]"},
+			{kind: stepField, idx: []int{1}, name: "f_int"},
+		}
+
+		// --- When ---
+		err := NewDecoder().apply(dst, stp, []string{"x"}, stt, "")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
 	})
 }
 

@@ -101,21 +101,22 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // [WithDecMaxIndex] sets, is an [ErrInvValue] field error. Among the fields of
 // a struct and the structs it embeds, a key names the field Go promotion
 // selects, as in [encoding/json]. Errors of the src values are returned as
-// [xrr.FieldErrors] keyed by the src keys; the other values are still set. The
-// first key reaching a slice or an array replaces it: the values of one key
-// replace the elements, indexed keys fill a new slice whose gaps are zero
-// values, and array elements no key sets are zeroed; a field with no key keeps
-// its value. Keys are added to an existing map, and the values of a map are
-// updated in place. A nil pointer to a nested struct is allocated only when a
-// src key leads into it. A field with the "required" option is an [ErrRequired]
-// error when it is empty after decoding: a zero number, an empty string, slice
-// or map, a nil pointer, or a zero struct; a bool is never empty. The required
-// fields of a nil struct pointer, an absent struct, are not checked; those of
-// the structs in maps, slices and arrays are, under paths like "items[k].name".
-// A src key leading into an embedded nil pointer to a struct, which the decoder
-// cannot allocate because the field is unexported, is an [ErrUnexported] field
-// error. A struct tag of dst that does not parse is an [ErrInvTag] error.
-// Pointers to pointers to structs are not supported.
+// [xrr.FieldErrors] keyed by the src keys; the other values are still set, and
+// a key with a value error adds no slice element or map entry. The first key
+// reaching a slice or an array replaces it: the values of one key replace the
+// elements, indexed keys fill a new slice whose gaps are zero values, and array
+// elements no key sets are zeroed; a field with no key keeps its value. Keys
+// are added to an existing map, and the values of a map are updated in place. A
+// nil pointer to a nested struct is allocated only when a src key leads into
+// it. A field with the "required" option is an [ErrRequired] error when it is
+// empty after decoding: a zero number, an empty string, slice or map, a nil
+// pointer, or a zero struct; a bool is never empty. The required fields of a
+// nil struct pointer, an absent struct, are not checked; those of the structs
+// in maps, slices and arrays are, under paths like "items[k].name". A src key
+// leading into an embedded nil pointer to a struct, which the decoder cannot
+// allocate because the field is unexported, is an [ErrUnexported] field error.
+// A struct tag of dst that does not parse is an [ErrInvTag] error. Pointers to
+// pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -161,7 +162,7 @@ func (dec *Decoder) decode(
 		ers.Set(pth, err)
 	}
 
-	reset := make(map[string]bool) // Slice paths reset in this call.
+	stt := newState()
 	for key, vls := range src {
 		segs, ok := parseKey(key)
 		var steps []step
@@ -172,7 +173,7 @@ func (dec *Decoder) decode(
 			steps, err = dec.plan(val.Type(), segs)
 		}
 		if err == nil {
-			err = dec.apply(val, steps, vls, reset, "")
+			err = dec.apply(val, steps, vls, stt, "")
 		}
 		switch {
 		case err == nil, errors.Is(err, errIgnored):
@@ -358,21 +359,50 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 	return pos, nil
 }
 
+// state is the state of one Decode call.
+type state struct {
+	reset map[string]bool // Canonical paths of the slices and arrays reset.
+	log   []string        // The paths in reset, in the order they were set.
+}
+
+// newState returns the state of a new Decode call.
+func newState() *state {
+	return &state{reset: make(map[string]bool)}
+}
+
+// markReset records the canonical path pth as reset.
+func (stt *state) markReset(pth string) {
+	if !stt.reset[pth] {
+		stt.reset[pth] = true
+		stt.log = append(stt.log, pth)
+	}
+}
+
+// undo forgets the paths reset since the log held n of them.
+func (stt *state) undo(n int) {
+	for _, pth := range stt.log[n:] {
+		delete(stt.reset, pth)
+	}
+	stt.log = stt.log[:n]
+}
+
 // apply moves from dst along the steps and sets the value reached to vls.
 // Nil pointers on the way are allocated, and map entries are written back
 // after the value in them is set. The first step into a slice or array in a
-// Decode call resets it; reset holds the canonical paths reset so far, and
-// pth is the canonical path of dst.
+// Decode call resets it; stt holds the canonical paths reset so far, and pth
+// is the canonical path of dst. A key whose value fails writes no map entry
+// and adds no slice elements, and the resets it made in a map entry are
+// forgotten.
 func (dec *Decoder) apply(
 	dst reflect.Value,
 	steps []step,
 	vls []string,
-	reset map[string]bool,
+	stt *state,
 	pth string,
 ) error {
 
 	if len(steps) == 0 {
-		reset[pth] = true
+		stt.markReset(pth)
 		ok, err := setDst(dst, dec.reg, vls...)
 		if !ok {
 			return decNotFound(dst.Type())
@@ -394,7 +424,7 @@ func (dec *Decoder) apply(
 			}
 			dst = dst.Field(i)
 		}
-		return dec.apply(dst, steps[1:], vls, reset, fieldPath(pth, stp.name))
+		return dec.apply(dst, steps[1:], vls, stt, fieldPath(pth, stp.name))
 
 	case stepKey:
 		if dst.IsNil() {
@@ -410,24 +440,34 @@ func (dec *Decoder) apply(
 		if cur := dst.MapIndex(key); cur.IsValid() && len(steps) > 1 {
 			val.Set(cur)
 		}
-		err = dec.apply(val, steps[1:], vls, reset, pth+stp.name)
+		mark := len(stt.log)
+		err = dec.apply(val, steps[1:], vls, stt, pth+stp.name)
 		if err != nil {
+			stt.undo(mark) // The value with the resets is dropped.
 			return err
 		}
 		dst.SetMapIndex(key, val)
 		return nil
 
 	default:
-		if !reset[pth] {
-			reset[pth] = true
+		if !stt.reset[pth] {
+			stt.markReset(pth)
 			dst.SetZero()
 		}
-		if dst.Kind() == reflect.Slice && dst.Len() <= stp.pos {
-			dst.Grow(stp.pos + 1 - dst.Len())
+		size := dst.Len()
+		if dst.Kind() == reflect.Slice && size <= stp.pos {
+			dst.Grow(stp.pos + 1 - size)
 			dst.SetLen(stp.pos + 1)
 		}
 		elem := dst.Index(stp.pos)
-		return dec.apply(elem, steps[1:], vls, reset, pth+stp.name)
+		err := dec.apply(elem, steps[1:], vls, stt, pth+stp.name)
+		if err != nil && dst.Len() > size {
+			for i := size; i < dst.Len(); i++ {
+				dst.Index(i).SetZero()
+			}
+			dst.SetLen(size)
+		}
+		return err
 	}
 }
 
