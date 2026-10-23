@@ -392,6 +392,12 @@ func (tvl TValuer) Value() (driver.Value, error) {
 	return string(tvl), nil
 }
 
+// TSelfValuer implements [driver.Valuer] returning itself, which breaks the
+// contract of the interface.
+type TSelfValuer string
+
+func (tsv TSelfValuer) Value() (driver.Value, error) { return tsv, nil }
+
 // TAmbA and TAmbB both have an X field with the same key, so a struct
 // embedding both has no field for the key x.
 type TAmbA struct {

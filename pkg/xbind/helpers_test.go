@@ -336,6 +336,8 @@ func Test_isEmpty_tabular(t *testing.T) {
 		{"empty Valuer", reflect.ValueOf(TValuer("")), true},
 		{"Valuer", reflect.ValueOf(TValuer("a")), false},
 		{"Valuer error", reflect.ValueOf(TValuer("error")), false},
+		{"empty Valuer of itself", reflect.ValueOf(TSelfValuer("")), true},
+		{"Valuer of itself", reflect.ValueOf(TSelfValuer("a")), false},
 		{"unexported zero struct", unexp, true},
 		{"false", reflect.ValueOf(false), false},
 		{"empty string", reflect.ValueOf(""), true},

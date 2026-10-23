@@ -184,8 +184,11 @@ func isEmpty(v reflect.Value) bool {
 			return zer.IsZero()
 		}
 		if vlr, ok := v.Interface().(driver.Valuer); ok {
-			if val, err := vlr.Value(); err == nil {
-				return isEmpty(reflect.ValueOf(val))
+			val, err := vlr.Value()
+			rv := reflect.ValueOf(val)
+			// A value of its own type would be checked forever.
+			if err == nil && (!rv.IsValid() || rv.Type() != v.Type()) {
+				return isEmpty(rv)
 			}
 		}
 	}
