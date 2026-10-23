@@ -1189,6 +1189,15 @@ func Test_Encoder_Encode(t *testing.T) {
 
 	t.Run("registered encoder", func(t *testing.T) {
 		// --- Given ---
+		enc := NewEncoder(
+			WithEncFunc(func(tim time.Time) (string, error) {
+				return tim.Format(time.DateOnly), nil
+			}),
+			WithEncFunc(encPoint),
+			WithEncFunc(func(lvl TLevel) (string, error) {
+				return strconv.Itoa(int(lvl)), nil
+			}),
+		)
 		dst := url.Values{}
 		tim := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 		s := &struct {
@@ -1208,15 +1217,6 @@ func Test_Encoder_Encode(t *testing.T) {
 			PP: &TPoint{X: 3, Y: 4},
 			L:  TLevel(9),
 		}
-		enc := NewEncoder(
-			WithEncFunc(func(tim time.Time) (string, error) {
-				return tim.Format(time.DateOnly), nil
-			}),
-			WithEncFunc(encPoint),
-			WithEncFunc(func(lvl TLevel) (string, error) {
-				return strconv.Itoa(int(lvl)), nil
-			}),
-		)
 
 		// --- When ---
 		err := enc.Encode(dst, s)

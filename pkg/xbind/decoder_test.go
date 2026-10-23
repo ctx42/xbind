@@ -2661,12 +2661,13 @@ func Test_Decoder_apply(t *testing.T) {
 		dec := NewDecoder()
 		m := map[string][]int{"k": {9, 9, 9}}
 		dst := reflect.ValueOf(&m).Elem()
-		stt := newState()
 		key := step{kind: stepKey, key: "k", name: "[k]"}
-		bad := []step{key, {kind: stepIndex, pos: 1, name: "[1]"}}
-		_ = dec.apply(dst, bad, []string{"abc"}, stt, "") // Fails on abc.
 		stp := []step{key, {kind: stepIndex, pos: 0, name: "[0]"}}
 		vls := []string{"1"}
+
+		stt := newState()
+		bad := []step{key, {kind: stepIndex, pos: 1, name: "[1]"}}
+		_ = dec.apply(dst, bad, []string{"abc"}, stt, "") // Fails on abc.
 
 		// --- When ---
 		err := dec.apply(dst, stp, vls, stt, "")
@@ -2680,13 +2681,14 @@ func Test_Decoder_apply(t *testing.T) {
 		// --- Given ---
 		s := []TRequired{{FStr: "a"}}
 		dst := reflect.ValueOf(&s).Elem()
-		stt := newState()
-		stt.markReset("", reflect.Value{})
 		stp := []step{
 			{kind: stepIndex, pos: 3, name: "[3]"},
 			{kind: stepField, idx: []int{1}, name: "f_int"},
 		}
 		vls := []string{"x"}
+
+		stt := newState()
+		stt.markReset("", reflect.Value{})
 
 		// --- When ---
 		err := NewDecoder().apply(dst, stp, vls, stt, "")
