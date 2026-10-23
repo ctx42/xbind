@@ -785,7 +785,9 @@ func isUnmarshal(dst reflect.Value) bool {
 // useUnmarshal sets dst using its [encoding.TextUnmarshaler] implementation,
 // when it has one (see isUnmarshal), and returns true. Such a dst takes
 // exactly one value. The dst must not be a pointer. The nil pointers a struct
-// dst embeds are allocated first (see allocEmbedded).
+// dst embeds are allocated first (see allocEmbedded); a method promoted
+// through a nil embedded interface returns an error wrapping
+// [ErrDecNotFound].
 func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	if !isUnmarshal(dst) {
 		return false, nil
@@ -799,6 +801,9 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 		if err = allocEmbedded(dst, map[reflect.Type]bool{}); err != nil {
 			return true, err
 		}
+		if nilPromoted(dst, "UnmarshalText") {
+			return true, decNotFound(dst.Type()) // A nil interface is left.
+		}
 	}
 	unm, _ := dst.Addr().Interface().(encoding.TextUnmarshaler)
 	return true, unm.UnmarshalText([]byte(val))
@@ -806,26 +811,27 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 
 // allocEmbedded allocates the nil pointers the struct dst embeds, directly or
 // through embedded structs, so the methods they promote have a receiver. The
-// seen map holds the pointer types met so far; a pointer of a type met before
-// is left as it is, so an embedding cycle ends. A nil embedded pointer that
-// cannot be set, one of an unexported type, returns [ErrUnexported].
+// seen map holds the pointer types on the path to dst; a pointer of such a
+// type is left as it is, so an embedding cycle ends. A nil embedded pointer
+// that cannot be set, one of an unexported type, returns [ErrUnexported].
 func allocEmbedded(dst reflect.Value, seen map[reflect.Type]bool) error {
 	for i := 0; i < dst.NumField(); i++ {
 		if !dst.Type().Field(i).Anonymous {
 			continue
 		}
 		fld := dst.Field(i)
+		typ := fld.Type()
 		if fld.Kind() == reflect.Pointer {
-			if seen[fld.Type()] {
+			if seen[typ] {
 				continue
 			}
-			seen[fld.Type()] = true
 			if fld.IsNil() {
 				if !fld.CanSet() {
 					return ErrUnexported
 				}
-				fld.Set(reflect.New(fld.Type().Elem()))
+				fld.Set(reflect.New(typ.Elem()))
 			}
+			seen[typ] = true
 			fld = fld.Elem()
 		}
 		if fld.Kind() == reflect.Struct {
@@ -833,6 +839,7 @@ func allocEmbedded(dst reflect.Value, seen map[reflect.Type]bool) error {
 				return err
 			}
 		}
+		delete(seen, typ) // Other paths may hold the type too.
 	}
 	return nil
 }

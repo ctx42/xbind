@@ -1041,6 +1041,40 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.ErrorIs(t, ErrUnexported, err)
 	})
 
+	t.Run("error - unmarshaler from nil interface", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			W struct{ encoding.TextUnmarshaler } `url:"w"`
+		}{}
+		src := url.Values{"w": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldCnt(t, 1, err)
+		xrrtest.AssertFieldIs(t, "w", ErrDecNotFound, err)
+	})
+
+	t.Run("unmarshaler from shallower of two nil pointers", func(t *testing.T) {
+		// --- Given ---
+		type wrap struct{ *TTextPtr }
+		dst := &struct {
+			F struct {
+				wrap
+				*TTextPtr
+			} `url:"f"`
+		}{}
+		src := url.Values{"f": {"2A"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, TTextPtr(42), *dst.F.TTextPtr)
+	})
+
 	t.Run("ignored field does not hide a tagged field", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -3232,6 +3266,26 @@ func Test_allocEmbedded(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, s.TCycle)
 		assert.Nil(t, s.TCycle.TCycle)
+	})
+
+	t.Run("pointer type met deeper first", func(t *testing.T) {
+		// --- Given ---
+		type wrap struct{ *TTextPtr }
+		s := &struct {
+			wrap
+			*TTextPtr
+		}{}
+		dst := reflect.ValueOf(s).Elem()
+		seen := map[reflect.Type]bool{}
+
+		// --- When ---
+		err := allocEmbedded(dst, seen)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.NotNil(t, s.wrap.TTextPtr)
+		assert.NotNil(t, s.TTextPtr)
+		assert.Len(t, 0, seen)
 	})
 
 	t.Run("error - unexported nil embedded pointer", func(t *testing.T) {
