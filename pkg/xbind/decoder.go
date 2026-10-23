@@ -637,22 +637,13 @@ func (dec *Decoder) required(
 		if (!anon || !isStruct) && !lvl.names(name, i) {
 			continue
 		}
-		fldPath := fieldPath(prefix, name)
-		if isStruct && (anon || !dec.isLeafType(indirect(fld.Type()))) {
+		if anon && isStruct {
 			// The path to a field that comes from an embedded struct does
 			// not include the name of the embedded struct.
-			if anon {
-				fldPath = prefix
-			} else if tag.Contains("required") && isEmpty(fld.Value()) {
-				setErr(fldPath, ErrRequired)
-			}
 			nxt := lvl.embedded(i)
-			if !anon {
-				nxt = newLevel(fld.Type(), dec.tagName())
-			}
 			val := fld.Value()
 			if val.Kind() != reflect.Pointer {
-				dec.required(fldPath, fld.StructValue(), nxt, seen, stt, setErr)
+				dec.required(prefix, fld.StructValue(), nxt, seen, stt, setErr)
 				continue
 			}
 			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
@@ -660,10 +651,11 @@ func (dec *Decoder) required(
 				continue // An absent struct, or a pointer cycle.
 			}
 			seen[key] = true
-			dec.required(fldPath, fld.StructValue(), nxt, seen, stt, setErr)
+			dec.required(prefix, fld.StructValue(), nxt, seen, stt, setErr)
 			delete(seen, key)
 			continue
 		}
+		fldPath := fieldPath(prefix, name)
 		if tag.Contains("required") && isEmpty(fld.Value()) {
 			setErr(fldPath, ErrRequired)
 		}
