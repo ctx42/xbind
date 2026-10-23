@@ -2890,6 +2890,87 @@ func Test_Decoder_required_tabular(t *testing.T) {
 	}
 }
 
+func Test_Decoder_requiredIn(t *testing.T) {
+	t.Run("pointer to slice", func(t *testing.T) {
+		// --- Given ---
+		s := []TRequired{{FStr: "a"}, {}}
+		val := reflect.ValueOf(&s)
+		seen := map[ptrKey]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().requiredIn("l", val, seen, newState(), setErr)
+
+		// --- Then ---
+		assert.Equal(t, []string{"l[1].f_str"}, have)
+	})
+
+	t.Run("nil pointer", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf((*[]TRequired)(nil))
+		seen := map[ptrKey]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().requiredIn("l", val, seen, newState(), setErr)
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+
+	t.Run("leaf elements", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf([]TReqUnm{{}})
+		seen := map[ptrKey]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().requiredIn("l", val, seen, newState(), setErr)
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+
+	t.Run("map key text from the src key", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf(map[TPoint]TRequired{{1, 2}: {}})
+		seen := map[ptrKey]bool{}
+
+		stt := newState()
+		stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2")
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().requiredIn("m", val, seen, stt, setErr)
+
+		// --- Then ---
+		assert.Equal(t, []string{"m[1,2].f_str"}, have)
+	})
+
+	t.Run("map key text of a key no src key reached", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf(map[TPoint]TRequired{{1, 2}: {}})
+		seen := map[ptrKey]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().requiredIn("m", val, seen, newState(), setErr)
+
+		// --- Then ---
+		assert.Equal(t, []string{"m[{1 2}].f_str"}, have)
+	})
+}
+
 func Test_isUnmarshal_tabular(t *testing.T) {
 	type S struct{ F string }
 

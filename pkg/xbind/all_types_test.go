@@ -182,6 +182,17 @@ type TRequired struct {
 	FInt int    `url:"f_int"`
 }
 
+// TReqUnm is a struct with a required field implementing
+// [encoding.TextUnmarshaler], so it is decoded as a whole.
+type TReqUnm struct {
+	S string `url:"s,required"`
+}
+
+func (tru *TReqUnm) UnmarshalText(text []byte) error {
+	tru.S = string(text)
+	return nil
+}
+
 // TWithTime is a struct with a time field.
 type TWithTime struct {
 	FTime time.Time `url:"f_time"`
