@@ -810,9 +810,7 @@ func isUnmarshal(dst reflect.Value) bool {
 // useUnmarshal sets dst using its [encoding.TextUnmarshaler] implementation,
 // when it has one (see isUnmarshal), and returns true. Such a dst takes
 // exactly one value. The dst must not be a pointer. The nil pointers a struct
-// dst embeds are allocated first (see allocEmbedded); a method promoted
-// through a nil embedded interface returns an error wrapping
-// [ErrDecNotFound].
+// dst gets the method through are allocated first (see allocPath).
 func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	if !isUnmarshal(dst) {
 		return false, nil
@@ -823,48 +821,39 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	}
 	if dst.Kind() == reflect.Struct && hasNilEmbedded(dst, map[uintptr]bool{}) {
 		// The method may be promoted through a nil embedded pointer.
-		if err = allocEmbedded(dst, map[reflect.Type]bool{}); err != nil {
+		if err = allocPath(dst, "UnmarshalText"); err != nil {
 			return true, err
-		}
-		if nilPromoted(dst, "UnmarshalText") {
-			return true, decNotFound(dst.Type()) // A nil interface is left.
 		}
 	}
 	unm, _ := dst.Addr().Interface().(encoding.TextUnmarshaler)
 	return true, unm.UnmarshalText([]byte(val))
 }
 
-// allocEmbedded allocates the nil pointers the struct dst embeds, directly or
-// through embedded structs, so the methods they promote have a receiver. The
-// seen map holds the pointer types on the path to dst; a pointer of such a
-// type is left as it is, so an embedding cycle ends. A nil embedded pointer
-// that cannot be set, one of an unexported type, returns [ErrUnexported].
-func allocEmbedded(dst reflect.Value, seen map[reflect.Type]bool) error {
-	for i := 0; i < dst.NumField(); i++ {
-		if !dst.Type().Field(i).Anonymous {
-			continue
-		}
-		fld := dst.Field(i)
-		typ := fld.Type()
-		if fld.Kind() == reflect.Pointer {
-			if seen[typ] {
-				continue
+// allocPath allocates the nil pointers on the path of embedded fields the
+// struct dst gets the method name through (see methodPath), so the method
+// has a receiver it can set. A nil pointer on the path that cannot be set,
+// an embedded pointer to an unexported type, returns [ErrUnexported], and a
+// nil interface returns an error wrapping [ErrDecNotFound].
+func allocPath(dst reflect.Value, name string) error {
+	pth, _ := methodPath(dst.Type(), name, map[reflect.Type]bool{})
+	val := dst
+	for _, i := range pth {
+		val = val.Field(i)
+		switch val.Kind() { //nolint:exhaustive
+		case reflect.Interface:
+			if val.IsNil() {
+				return decNotFound(dst.Type())
 			}
-			if fld.IsNil() {
-				if !fld.CanSet() {
+
+		case reflect.Pointer:
+			if val.IsNil() {
+				if !val.CanSet() {
 					return ErrUnexported
 				}
-				fld.Set(reflect.New(typ.Elem()))
+				val.Set(reflect.New(val.Type().Elem()))
 			}
-			seen[typ] = true
-			fld = fld.Elem()
+			val = val.Elem()
 		}
-		if fld.Kind() == reflect.Struct {
-			if err := allocEmbedded(fld, seen); err != nil {
-				return err
-			}
-		}
-		delete(seen, typ) // Other paths may hold the type too.
 	}
 	return nil
 }

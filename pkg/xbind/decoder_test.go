@@ -1075,6 +1075,41 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, TTextPtr(42), *dst.F.TTextPtr)
 	})
 
+	t.Run("own unmarshaler leaves embeds nil", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			F TOwnUnm `url:"f"`
+		}{}
+		src := url.Values{"f": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "x", dst.F.S)
+		assert.Nil(t, dst.F.TItem)
+	})
+
+	t.Run("unmarshaler skips unexported nil pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			F struct {
+				TOwnUnm
+				*tStr
+			} `url:"f"`
+		}{}
+		src := url.Values{"f": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "x", dst.F.S)
+		assert.Nil(t, dst.F.tStr)
+	})
+
 	t.Run("ignored field does not hide a tagged field", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -3310,82 +3345,89 @@ func Test_useUnmarshal(t *testing.T) {
 	})
 }
 
-func Test_allocEmbedded(t *testing.T) {
-	t.Run("nested", func(t *testing.T) {
+func Test_allocPath(t *testing.T) {
+	t.Run("nil pointers on the path", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ *TPromZero }{}
 		dst := reflect.ValueOf(s).Elem()
-		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, seen)
+		err := allocPath(dst, "UnmarshalText")
 
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, time.Time{}, *s.Time)
 	})
 
-	t.Run("nil embedded pointer", func(t *testing.T) {
+	t.Run("nil pointer behind embedded struct", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ TPromZero }{}
 		dst := reflect.ValueOf(s).Elem()
-		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, seen)
+		err := allocPath(dst, "UnmarshalText")
 
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, time.Time{}, *s.Time)
 	})
 
-	t.Run("embedding cycle", func(t *testing.T) {
-		// --- Given ---
-		s := &TCycle{}
-		dst := reflect.ValueOf(s).Elem()
-		seen := map[reflect.Type]bool{}
-
-		// --- When ---
-		err := allocEmbedded(dst, seen)
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.NotNil(t, s.TCycle)
-		assert.Nil(t, s.TCycle.TCycle)
-	})
-
-	t.Run("pointer type met deeper first", func(t *testing.T) {
+	t.Run("pointers off the path stay nil", func(t *testing.T) {
 		// --- Given ---
 		type wrap struct{ *TTextPtr }
 		s := &struct {
 			wrap
 			*TTextPtr
+			TOwnUnm
 		}{}
 		dst := reflect.ValueOf(s).Elem()
-		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, seen)
+		err := allocPath(dst, "MarshalText")
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.NotNil(t, s.wrap.TTextPtr)
 		assert.NotNil(t, s.TTextPtr)
-		assert.Len(t, 0, seen)
+		assert.Nil(t, s.wrap.TTextPtr)
+		assert.Nil(t, s.TItem)
 	})
 
-	t.Run("error - unexported nil embedded pointer", func(t *testing.T) {
+	t.Run("no method", func(t *testing.T) {
 		// --- Given ---
-		s := &TUnexpPtr{}
+		s := &struct{ *TItem }{}
 		dst := reflect.ValueOf(s).Elem()
-		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, seen)
+		err := allocPath(dst, "UnmarshalText")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Nil(t, s.TItem)
+	})
+
+	t.Run("error - unexported nil pointer on the path", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ *tUnmInner }{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
-		assert.Nil(t, s.tStr)
+		assert.Nil(t, s.tUnmInner)
+	})
+
+	t.Run("error - nil interface on the path", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ encoding.TextUnmarshaler }{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrDecNotFound, err)
 	})
 }
 

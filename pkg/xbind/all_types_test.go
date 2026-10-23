@@ -35,6 +35,7 @@ var (
 	_ encoding.TextMarshaler   = tTextB{}
 	_ encoding.TextUnmarshaler = (*tUnmInner)(nil)
 	_ encoding.TextMarshaler   = TOwnText{}
+	_ encoding.TextUnmarshaler = (*TOwnUnm)(nil)
 	_ encoding.TextMarshaler   = TLevel(0)
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 )
@@ -381,6 +382,18 @@ type TPromZero struct{ *time.Time }
 type TOwnText struct{ *time.Time }
 
 func (tot TOwnText) MarshalText() ([]byte, error) { return []byte("own"), nil }
+
+// TOwnUnm declares its own UnmarshalText method and embeds a pointer to
+// [TItem], which the method does not need.
+type TOwnUnm struct {
+	*TItem
+	S string
+}
+
+func (tou *TOwnUnm) UnmarshalText(text []byte) error {
+	tou.S = string(text)
+	return nil
+}
 
 // TLevel is an int implementing [encoding.TextMarshaler] and
 // [encoding.TextUnmarshaler] with "L<n>" text.
