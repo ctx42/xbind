@@ -255,7 +255,8 @@ func declares(typ reflect.Type, name string) bool {
 // github.com/ctx42/verax package. Methods are called only when v can be
 // interfaced, and not on a struct embedding a nil pointer or interface, or a
 // pointer or interface to one, whose promoted methods would panic; such a
-// struct is empty when all its fields are zero.
+// struct is empty when all its fields are zero. A chain of pointers and
+// interfaces leading back to itself is not empty.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
@@ -269,9 +270,19 @@ func isEmpty(v reflect.Value) bool {
 		}
 	}
 	base := v
+	var seen map[uintptr]bool // Pointers on the chain, so a cycle ends.
 	for base.Kind() == reflect.Interface || base.Kind() == reflect.Pointer {
 		if base.IsNil() {
 			break
+		}
+		if base.Kind() == reflect.Pointer {
+			if seen[base.Pointer()] {
+				return false // A chain pointing to itself holds no value.
+			}
+			if seen == nil {
+				seen = make(map[uintptr]bool)
+			}
+			seen[base.Pointer()] = true
 		}
 		base = base.Elem()
 	}

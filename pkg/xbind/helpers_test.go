@@ -453,6 +453,10 @@ func Test_isEmpty_tabular(t *testing.T) {
 	itf := reflect.ValueOf(&struct{ I any }{I: ""}).Elem().Field(0)
 	itfFull := reflect.ValueOf(&struct{ I any }{I: "a"}).Elem().Field(0)
 	unexp := reflect.ValueOf(struct{ t time.Time }{}).Field(0)
+	var self TRecPtr
+	self = &self
+	var selfItf any
+	selfItf = &selfItf
 
 	tt := []struct {
 		testN string
@@ -494,6 +498,12 @@ func Test_isEmpty_tabular(t *testing.T) {
 		{"pointer", reflect.ValueOf(new("a")), false},
 		{"interface to empty", itf, true},
 		{"interface", itfFull, false},
+		{"pointer to itself", reflect.ValueOf(self), false},
+		{
+			"interface holding its address",
+			reflect.ValueOf(&selfItf).Elem(),
+			false,
+		},
 		{"zero int", reflect.ValueOf(0), true},
 		{"int", reflect.ValueOf(1), false},
 		{"zero float", reflect.ValueOf(0.0), true},

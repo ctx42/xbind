@@ -2274,6 +2274,48 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.TCycle)
 	})
 
+	t.Run("error - required in a map holding itself", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			M map[string]node `url:"m"`
+			R string          `url:"r,required"`
+		}
+
+		m := map[string]node{}
+		m["a"] = node{M: m}
+
+		dst := &node{M: m, R: "x"}
+		src := url.Values{}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "m[a].r: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - required in a slice holding itself", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			L []node `url:"l"`
+			R string `url:"r,required"`
+		}
+
+		s := make([]node, 1)
+		s[0].L = s
+
+		dst := &node{L: s, R: "x"}
+		src := url.Values{}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "l[0].r: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("unexported embedding cycle", func(t *testing.T) {
 		// --- Given ---
 		dst := &TSelfEmb{}

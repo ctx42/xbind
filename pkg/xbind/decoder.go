@@ -670,8 +670,9 @@ func (dec *Decoder) isLeafValue(typ reflect.Type) bool {
 // fields, other than embedded structs, are skipped; an embedded struct has no
 // path, so its required option is ignored. The lvl is the level position of
 // dst; a field its key does not name there is skipped. The seen map holds
-// the struct pointers on the path to dst, so a pointer cycle ends. The paths
-// are canonical; stt gives the text of the map keys src keys reached.
+// the struct pointers, maps and slices on the path to dst, so a cycle ends.
+// The paths are canonical; stt gives the text of the map keys src keys
+// reached.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
@@ -760,6 +761,15 @@ func (dec *Decoder) requiredIn(
 	case reflect.Slice, reflect.Array, reflect.Map:
 		if dec.isLeafType(indirect(val.Type().Elem())) {
 			return // No element holds a required field.
+		}
+		if val.Kind() != reflect.Array && val.Len() > 0 {
+			// A map or slice holding itself is a cycle without a pointer.
+			key := ptrKey{ptr: val.Pointer(), typ: val.Type(), len: val.Len()}
+			if seen[key] {
+				return
+			}
+			seen[key] = true
+			defer delete(seen, key)
 		}
 	}
 	switch val.Kind() { //nolint:exhaustive
