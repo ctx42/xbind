@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"encoding"
+	"errors"
 	"net/url"
 	"reflect"
 	"slices"
@@ -88,6 +89,8 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // nil pointer or interface adds nothing: a nil field has no key, a map entry
 // with a nil key or value is left out, and a nil plain value in a slice or
 // array has no value, so the elements after it move up one place when decoded.
+// A value whose [Marshaler] or [encoding.TextMarshaler] method the call would
+// reach through a nil embedded field counts as nil too (see [Marshaler]).
 // An indexed element or a map value adding no keys, such as a nil pointer, an
 // empty slice or a struct whose fields are all empty and omitempty, is not
 // written either, so such a map entry, or such an element at the end of a
@@ -260,8 +263,9 @@ type ptrKey struct {
 // its address, implements [Marshaler], then [encoding.TextMarshaler]; lastly,
 // it calls encFor to find an encoder. For an inline src, the struct passed to
 // [Encoder.Encode] or a struct embedded in a struct, only [Marshaler] is
-// used. A nil pointer or interface with an encoder adds nothing to dst and
-// returns true.
+// used. A nil pointer or interface with an encoder, or a value whose
+// marshaler method would be reached through a nil embedded field (see
+// nilPromoted), adds nothing to dst and returns true.
 func encSrc(
 	dst url.Values,
 	prefix string,
@@ -295,13 +299,20 @@ func encSrc(
 		if !typ.Implements(iMarshaler) || !src.CanInterface() {
 			return false, nil
 		}
+		if nilPromoted(src, "MarshalValues") {
+			return true, nil
+		}
 		m := src.Interface().(Marshaler) //nolint:forcetypeassert
 		return true, m.MarshalValues(dst, prefix)
 	}
 	efn := reg.lookup(typ)
 	// The methods of a value read from an unexported field cannot be called.
 	if efn == nil && isMarshaler(typ) && src.CanInterface() {
-		if isNil(src) {
+		name := "MarshalText"
+		if typ.Implements(iMarshaler) {
+			name = "MarshalValues"
+		}
+		if isNil(src) || nilPromoted(src, name) {
 			return true, nil
 		}
 		if m, ok := src.Interface().(Marshaler); ok {
@@ -412,6 +423,9 @@ func (enc *Encoder) encodeMap(
 			continue // A nil key adds nothing.
 		}
 		key, err := encMapKey(mk, enc.reg)
+		if errors.Is(err, errNilKey) {
+			continue // A key counting as nil adds nothing.
+		}
 		if err != nil {
 			return fieldError(prefix, err)
 		}
@@ -477,8 +491,12 @@ func (enc *Encoder) isValueType(typ reflect.Type) bool {
 	return encFor(typ, enc.reg) != nil
 }
 
+// errNilKey reports a map key whose MarshalText method would be reached
+// through a nil embedded field (see nilPromoted); such a key counts as nil.
+var errNilKey = errors.New("nil map key")
+
 // encMapKey encodes the map key to a string. The key must not be nil or an
-// interface holding a nil pointer.
+// interface holding a nil pointer. A key counting as nil returns errNilKey.
 func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	if key.Kind() == reflect.Interface {
 		key = key.Elem()
@@ -493,6 +511,9 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	}
 	typ := key.Type()
 	if typ.Implements(iTextMarshaler) {
+		if nilPromoted(key, "MarshalText") {
+			return "", errNilKey
+		}
 		m := key.Interface().(encoding.TextMarshaler) //nolint:forcetypeassert
 		text, err := m.MarshalText()
 		return string(text), err

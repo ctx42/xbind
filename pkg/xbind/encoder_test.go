@@ -1151,6 +1151,84 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"i": {"1"}}, dst)
 	})
 
+	t.Run("value method promoted from nil pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			F TPromZero `url:"f"`
+			I int       `url:"i"`
+		}{I: 1}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"i": {"1"}}, dst)
+	})
+
+	t.Run("top level marshaler promoted from nil pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			*TMarValVal
+			FStr string `url:"f_str"`
+		}{FStr: "x"}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Empty(t, dst)
+	})
+
+	t.Run("method promoted from nil embedded interface", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			F struct{ encoding.TextMarshaler } `url:"f"`
+			I int                              `url:"i"`
+		}{I: 1}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"i": {"1"}}, dst)
+	})
+
+	t.Run("own method with nil embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			F TOwnText `url:"f"`
+		}{}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"f": {"own"}}, dst)
+	})
+
+	t.Run("map key method promoted from nil pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			M map[TPromZero]string `url:"m"`
+		}{M: map[TPromZero]string{{}: "x"}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Empty(t, dst)
+	})
+
 	t.Run("error - map with NaN key", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -2603,6 +2681,15 @@ func Test_encMapKey(t *testing.T) {
 
 		// --- Then ---
 		assert.ErrorEqual(t, "non-printable ascii character", err)
+		assert.Equal(t, "", have)
+	})
+
+	t.Run("error - key counting as nil", func(t *testing.T) {
+		// --- When ---
+		have, err := encMapKey(reflect.ValueOf(TPromZero{}), nil)
+
+		// --- Then ---
+		assert.ErrorIs(t, errNilKey, err)
 		assert.Equal(t, "", have)
 	})
 

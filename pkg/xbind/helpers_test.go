@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"bytes"
+	"encoding"
 	"math"
 	"reflect"
 	"testing"
@@ -310,6 +311,136 @@ func Test_hasNilEmbedded_tabular(t *testing.T) {
 
 			// --- When ---
 			have := hasNilEmbedded(reflect.ValueOf(tc.val), seen)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_nilPromoted_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		val  any
+		name string
+		want bool
+	}{
+		{"own method", TOwnText{}, "MarshalText", false},
+		{"value method through nil pointer", TPromZero{}, "MarshalText", true},
+		{
+			"value method through pointer",
+			TPromZero{Time: &time.Time{}},
+			"MarshalText",
+			false,
+		},
+		{"pointer to struct", &TPromZero{}, "MarshalText", true},
+		{"past nil pointer", struct{ *TPromZero }{}, "MarshalText", true},
+		{
+			"pointer method through nil pointer",
+			struct{ *TStructMar }{},
+			"MarshalValues",
+			false,
+		},
+		{
+			"nil interface",
+			struct{ encoding.TextMarshaler }{},
+			"MarshalText",
+			true,
+		},
+		{
+			"interface",
+			struct{ encoding.TextMarshaler }{TTextVal('A')},
+			"MarshalText",
+			false,
+		},
+		{"no method", TItem{}, "MarshalText", false},
+		{"not a struct", 1, "MarshalText", false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := nilPromoted(reflect.ValueOf(tc.val), tc.name)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_methodPath_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ    reflect.Type
+		wPath  []int
+		wFound bool
+	}{
+		{"declared", reflect.TypeFor[TOwnText](), nil, true},
+		{"promoted", reflect.TypeFor[TPromZero](), []int{0}, true},
+		{
+			"pointer to struct",
+			reflect.TypeFor[*struct{ TPromZero }](),
+			[]int{0, 0},
+			true,
+		},
+		{
+			"shallowest wins",
+			reflect.TypeFor[struct {
+				TPromZero
+				*TTextPtr
+			}](),
+			[]int{1},
+			true,
+		},
+		{
+			"ambiguous",
+			reflect.TypeFor[struct {
+				tTextA
+				tTextB
+			}](),
+			nil,
+			false,
+		},
+		{"recursive type", reflect.TypeFor[TCycle](), nil, false},
+		{"no method", reflect.TypeFor[TItem](), nil, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			seen := map[reflect.Type]bool{}
+
+			// --- When ---
+			have, ok := methodPath(tc.typ, "MarshalText", seen)
+
+			// --- Then ---
+			assert.Equal(t, tc.wPath, have)
+			assert.Equal(t, tc.wFound, ok)
+			assert.Len(t, 0, seen)
+		})
+	}
+}
+
+func Test_declares_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"value receiver", reflect.TypeFor[TTextVal](), true},
+		{"pointer receiver", reflect.TypeFor[TTextPtr](), true},
+		{"promoted", reflect.TypeFor[TPromZero](), false},
+		{"interface", reflect.TypeFor[encoding.TextMarshaler](), true},
+		{"none", reflect.TypeFor[TItem](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := declares(tc.typ, "MarshalText")
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
