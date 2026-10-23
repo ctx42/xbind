@@ -2018,7 +2018,8 @@ func Test_encMapKey(t *testing.T) {
 		have, err := encMapKey(reflect.ValueOf(ct{}), nil)
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrEncNotFound("xbind.ct"), err)
+		assert.ErrorEqual(t, "encoder not found for `xbind.ct`", err)
+		assert.ErrorIs(t, ErrEncNotFound, err)
 		assert.Equal(t, "", have)
 	})
 }
@@ -2047,4 +2048,14 @@ func Test_fieldError(t *testing.T) {
 		// --- Then ---
 		xrrtest.AssertFieldIs(t, "f", errTest, have)
 	})
+}
+
+func Test_encNotFound(t *testing.T) {
+	// --- When ---
+	err := encNotFound(reflect.TypeFor[chan int]())
+
+	// --- Then ---
+	assert.ErrorEqual(t, "encoder not found for `chan int`", err)
+	assert.ErrorIs(t, ErrEncNotFound, err)
+	xrrtest.AssertCode(t, ECEncNotFound, err)
 }

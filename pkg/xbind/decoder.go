@@ -124,7 +124,7 @@ func (dec *Decoder) decode(
 		}
 		if !res.isComplete() {
 			if !dec.allowUnknown {
-				setErr(pth, ErrUnkKeyPath(pth))
+				setErr(pth, ErrUnkFieldPath)
 			}
 			continue
 		}
@@ -445,7 +445,7 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 			return err
 		}
 		if !ok {
-			return ErrDecNotFound(et.String())
+			return decNotFound(et)
 		}
 		if et.Kind() != reflect.Pointer {
 			ne = ne.Elem() // Slice element is not a pointer type.
@@ -465,7 +465,7 @@ func setMap(dst reflect.Value, reg decReg, key string, vls ...string) error {
 	nk := reflect.New(indirect(kt))
 	ok, err := setDst(nk.Elem(), reg, key)
 	if !ok {
-		return ErrDecNotFound(kt.String())
+		return decNotFound(kt)
 	}
 	if err != nil {
 		return err
@@ -477,7 +477,7 @@ func setMap(dst reflect.Value, reg decReg, key string, vls ...string) error {
 	vt := dst.Type().Elem()
 	nv := reflect.New(indirect(vt))
 	if ok, err = setDst(nv.Elem(), reg, vls...); !ok {
-		return ErrDecNotFound(vt.String())
+		return decNotFound(vt)
 	}
 	if err != nil {
 		return err
@@ -513,6 +513,12 @@ func setField(dst reflect.Value, reg decReg, key string, vls ...string) error {
 		if ok, err := setDst(dst, reg, vls...); ok {
 			return err
 		}
-		return ErrDecNotFound(dst.Type().String())
+		return decNotFound(dst.Type())
 	}
+}
+
+// decNotFound returns an error wrapping [ErrDecNotFound] naming the typ type.
+func decNotFound(typ reflect.Type) error {
+	code := xrr.WithCode(ECDecNotFound)
+	return xrr.Newf("%w for %#q", ErrDecNotFound, typ.String(), code)
 }

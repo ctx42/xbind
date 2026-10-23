@@ -2583,3 +2583,13 @@ func Test_setField(t *testing.T) {
 		xrrtest.AssertCode(t, ECDecNotFound, err)
 	})
 }
+
+func Test_decNotFound(t *testing.T) {
+	// --- When ---
+	err := decNotFound(reflect.TypeFor[chan int]())
+
+	// --- Then ---
+	assert.ErrorEqual(t, "decoder not found for `chan int`", err)
+	assert.ErrorIs(t, ErrDecNotFound, err)
+	xrrtest.AssertCode(t, ECDecNotFound, err)
+}

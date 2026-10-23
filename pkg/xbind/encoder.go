@@ -123,7 +123,7 @@ func (enc *Encoder) encode(
 		return enc.encodeFields(dst, field, src, seen)
 
 	default:
-		return fieldError(field, ErrEncNotFound(src.Type().String()))
+		return fieldError(field, encNotFound(src.Type()))
 	}
 }
 
@@ -263,7 +263,7 @@ func encSliceOrArray(
 		val := src.Index(i)
 		ok, err := encSrc(dst, prefix, val, reg)
 		if !ok {
-			return fieldError(prefix, ErrEncNotFound(val.Type().String()))
+			return fieldError(prefix, encNotFound(val.Type()))
 		}
 		if err != nil {
 			return xrr.NewFieldError(buildPath(prefix, strconv.Itoa(i)), err)
@@ -312,7 +312,7 @@ func encMap(
 			}
 			continue
 		}
-		return xrr.NewFieldError(pth, ErrEncNotFound(mvv.Type().String()))
+		return xrr.NewFieldError(pth, encNotFound(mvv.Type()))
 	}
 	return nil
 }
@@ -337,7 +337,7 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	}
 	efn := encFor(typ, reg)
 	if efn == nil {
-		return "", ErrEncNotFound(typ.String())
+		return "", encNotFound(typ)
 	}
 	return efn(key)
 }
@@ -349,4 +349,10 @@ func fieldError(field string, err error) error {
 		return err
 	}
 	return xrr.NewFieldError(field, err)
+}
+
+// encNotFound returns an error wrapping [ErrEncNotFound] naming the typ type.
+func encNotFound(typ reflect.Type) error {
+	code := xrr.WithCode(ECEncNotFound)
+	return xrr.Newf("%w for %#q", ErrEncNotFound, typ.String(), code)
 }

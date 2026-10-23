@@ -35,7 +35,6 @@
 package xbind
 
 import (
-	"fmt"
 	"net/url"
 
 	"github.com/ctx42/xrr/pkg/xrr"
@@ -43,16 +42,6 @@ import (
 
 // defaultTag is the struct tag name read by [Encoder] and [Decoder].
 const defaultTag = "url"
-
-// Interfaces implemented by the error types.
-var (
-	_ xrr.Coder     = ErrUnkKeyPath("")
-	_ fmt.Formatter = ErrUnkKeyPath("")
-	_ xrr.Coder     = ErrDecNotFound("")
-	_ fmt.Formatter = ErrDecNotFound("")
-	_ xrr.Coder     = ErrEncNotFound("")
-	_ fmt.Formatter = ErrEncNotFound("")
-)
 
 // Marshaler is the interface implemented by types that can marshal themselves
 // into [url.Values]. The [Encoder] does not call it on a nil pointer, a nil
@@ -147,61 +136,16 @@ var (
 	// ErrCycle represents a pointer cycle: a pointer to a struct the encoder
 	// is already encoding.
 	ErrCycle = xrr.New("pointer cycle", ECCycle)
+
+	// ErrUnkFieldPath represents a source key that does not match a field.
+	ErrUnkFieldPath = xrr.New("invalid field path", ECUnkFieldPath)
+
+	// ErrDecNotFound represents a type the [Decoder] cannot decode.
+	ErrDecNotFound = xrr.New("decoder not found", ECDecNotFound)
+
+	// ErrEncNotFound represents a type the [Encoder] cannot encode.
+	ErrEncNotFound = xrr.New("encoder not found", ECEncNotFound)
 )
-
-// ErrUnkKeyPath represents an unknown field path error. The value is the
-// path.
-type ErrUnkKeyPath string
-
-func (ukp ErrUnkKeyPath) Error() string {
-	return "invalid field path"
-}
-
-// ErrorCode always returns the [ECUnkFieldPath] error code.
-func (ukp ErrUnkKeyPath) ErrorCode() string {
-	return ECUnkFieldPath
-}
-
-// Format implements [fmt.Formatter]; the %+v verb adds the error code.
-func (ukp ErrUnkKeyPath) Format(state fmt.State, verb rune) {
-	xrr.Format(ukp.Error(), ukp.ErrorCode(), state, verb)
-}
-
-// ErrDecNotFound represents an error for a missing type decoder. The value is
-// the type name.
-type ErrDecNotFound string
-
-func (dnf ErrDecNotFound) Error() string {
-	return fmt.Sprintf("decoder not found for %#q", string(dnf))
-}
-
-// ErrorCode always returns the [ECDecNotFound] error code.
-func (dnf ErrDecNotFound) ErrorCode() string {
-	return ECDecNotFound
-}
-
-// Format implements [fmt.Formatter]; the %+v verb adds the error code.
-func (dnf ErrDecNotFound) Format(state fmt.State, verb rune) {
-	xrr.Format(dnf.Error(), dnf.ErrorCode(), state, verb)
-}
-
-// ErrEncNotFound represents an error for a missing type encoder. The value is
-// the type name.
-type ErrEncNotFound string
-
-func (enf ErrEncNotFound) Error() string {
-	return fmt.Sprintf("encoder not found for %#q", string(enf))
-}
-
-// ErrorCode always returns the [ECEncNotFound] error code.
-func (enf ErrEncNotFound) ErrorCode() string {
-	return ECEncNotFound
-}
-
-// Format implements [fmt.Formatter]; the %+v verb adds the error code.
-func (enf ErrEncNotFound) Format(state fmt.State, verb rune) {
-	xrr.Format(enf.Error(), enf.ErrorCode(), state, verb)
-}
 
 // EncloseError envelops err with [xrr.Envelop] using [ErrBind] as the lead
 // error. It returns nil if err is nil.
