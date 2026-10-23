@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/ctx42/testing/pkg/assert"
+	"github.com/ctx42/xbind/pkg/xbind"
 )
 
 func Test_MustEncode(t *testing.T) {
@@ -57,5 +58,22 @@ func Test_MustDecode(t *testing.T) {
 
 		// --- Then ---
 		assert.Equal(t, "struct pointer required", *have)
+	})
+
+	t.Run("error - panics with the error", func(t *testing.T) {
+		// --- Given ---
+		s := struct{ FStr string }{}
+		vs := url.Values{"FStr": {"abc"}}
+
+		// --- When ---
+		have := func() (val any) {
+			defer func() { val = recover() }()
+			MustDecode(s, vs)
+			return nil
+		}()
+
+		// --- Then ---
+		err, _ := have.(error)
+		assert.ErrorIs(t, xbind.ErrReqStructPtr, err)
 	})
 }
