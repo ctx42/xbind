@@ -382,7 +382,7 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 	return pos, nil
 }
 
-// state is the state of one Decode call.
+// state is the state of one [Decoder.Decode] call.
 type state struct {
 	reset   map[string]bool        // Canonical paths of the reset containers.
 	log     []resetLog             // The resets, in the order made.
@@ -407,7 +407,8 @@ type mapEntry struct {
 	text string        // The key text in the canonical path of the entry.
 }
 
-// newState returns the state of a new Decode call, with no element budget.
+// newState returns the state of a new [Decoder.Decode] call, with no element
+// budget.
 func newState() *state {
 	return &state{
 		reset:   make(map[string]bool),
@@ -481,15 +482,15 @@ func (stt *state) undo(n int) {
 	stt.log = stt.log[:n]
 }
 
-// apply moves from dst along the steps and sets the value reached to vls.
-// Nil pointers on the way are allocated, and map entries are written back
-// after the value in them is set. The first step into a slice or array in a
-// Decode call resets it; stt holds the canonical paths reset so far, and pth
-// is the canonical path of dst. A key whose value fails writes no map entry
-// and adds no slice elements, and the resets it made in a map entry are
-// forgotten. A key setting a value another key set, or setting the values of
-// a slice or array other keys index, or the other way round, returns an
-// error wrapping [ErrInvValue].
+// apply moves from dst along the steps and sets the value reached to vls. Nil
+// pointers on the way are allocated, and map entries are written back after the
+// value in them is set. The first step into a slice or array in a
+// [Decoder.Decode] call resets it; stt holds the canonical paths reset so far,
+// and pth is the canonical path of dst. A key whose value fails writes no map
+// entry and adds no slice elements, and the resets it made in a map entry are
+// forgotten. A key setting a value another key set, or setting the values of a
+// slice or array other keys index, or the other way round, returns an error
+// wrapping [ErrInvValue].
 func (dec *Decoder) apply(
 	dst reflect.Value,
 	steps []step,

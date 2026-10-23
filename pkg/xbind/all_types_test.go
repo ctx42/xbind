@@ -409,7 +409,7 @@ type TSelfValuer string
 
 func (tsv TSelfValuer) Value() (driver.Value, error) { return tsv, nil }
 
-// TAmbA and TAmbB both have an X field with the same key, so a struct
+// TAmbA and [TAmbB] both have an X field with the same key, so a struct
 // embedding both has no field for the key x.
 type TAmbA struct {
 	X string `url:"x"`
