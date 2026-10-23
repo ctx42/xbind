@@ -437,15 +437,22 @@ func (stt *state) level(typ reflect.Type, key string) level {
 // values, by their encoded text or, when the key type has no encoder, by
 // their Go syntax, name one entry: its key is the first one decoded, so
 // pointer keys and keys holding pointers find it again, and its text is the
-// encoded text or, when the key type has no encoder, the src text of the
-// first key.
-func (stt *state) entry(pth string, key reflect.Value, txt string) mapEntry {
+// encoded text or, when the key type has no encoder or keep is true, the src
+// text of the first key. Pass keep for a key type with a registered decoder,
+// whose src text may differ from the encoded one.
+func (stt *state) entry(
+	pth string,
+	key reflect.Value,
+	txt string,
+	keep bool,
+) mapEntry {
+
 	id := pth + "[" + keyText(key, "%#v") + "]"
 	if ent, ok := stt.entries[id]; ok {
 		return ent
 	}
 	ent := mapEntry{key: key, text: txt}
-	if enc, err := encMapKey(key, nil); err == nil {
+	if enc, err := encMapKey(key, nil); err == nil && !keep {
 		ent.text = enc
 	}
 	stt.entries[id] = ent
@@ -532,7 +539,8 @@ func (dec *Decoder) apply(
 		return dec.apply(dst, steps[1:], vls, stt, fieldPath(pth, stp.name))
 
 	case stepKey:
-		key, err := decKey(dst.Type().Key(), dec.reg, stp.key)
+		kt := dst.Type().Key()
+		key, err := decKey(kt, dec.reg, stp.key)
 		if err != nil {
 			return err
 		}
@@ -542,7 +550,8 @@ func (dec *Decoder) apply(
 			const format = "%w: NaN map key"
 			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 		}
-		ent := stt.entry(pth, key, stp.key)
+		reg := dec.reg[indirect(kt)] != nil
+		ent := stt.entry(pth, key, stp.key, reg)
 		key = ent.key
 		kpt := pth + "[" + ent.text + "]"
 		val := reflect.New(dst.Type().Elem()).Elem()

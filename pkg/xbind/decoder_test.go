@@ -1863,6 +1863,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - required under registered time key", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(s string) (time.Time, error) {
+			return time.Parse(time.DateOnly, s)
+		}))
+		dst := &struct {
+			M map[time.Time]TRequired `url:"m"`
+		}{}
+		src := url.Values{"m[2026-01-02].f_int": {"5"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		want := "m[2026-01-02].f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("error - aliases of one field", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -2667,10 +2685,10 @@ func Test_state_entry(t *testing.T) {
 		// --- Given ---
 		stt := newState()
 		one := reflect.ValueOf(new(1))
-		ent := stt.entry("m", one, "01")
+		ent := stt.entry("m", one, "01", false)
 
 		// --- When ---
-		have := stt.entry("m", reflect.ValueOf(new(1)), "1")
+		have := stt.entry("m", reflect.ValueOf(new(1)), "1", false)
 
 		// --- Then ---
 		assert.Equal(t, "1", ent.text)
@@ -2684,21 +2702,34 @@ func Test_state_entry(t *testing.T) {
 		key := reflect.ValueOf(TPoint{1, 2})
 
 		// --- When ---
-		have := stt.entry("m", key, "1,2")
+		have := stt.entry("m", key, "1,2", false)
 
 		// --- Then ---
 		assert.Equal(t, "1,2", have.text)
 		assert.Equal(t, TPoint{1, 2}, have.key.Interface())
 	})
 
+	t.Run("registered key type keeps the src text", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		key := reflect.ValueOf(TLevel(9))
+
+		// --- When ---
+		have := stt.entry("m", key, "9", true)
+
+		// --- Then ---
+		assert.Equal(t, "9", have.text)
+		assert.Equal(t, TLevel(9), have.key.Interface())
+	})
+
 	t.Run("maps at other paths", func(t *testing.T) {
 		// --- Given ---
 		stt := newState()
 		one := reflect.ValueOf(new(1))
-		ent := stt.entry("a", one, "1")
+		ent := stt.entry("a", one, "1", false)
 
 		// --- When ---
-		have := stt.entry("b", reflect.ValueOf(new(1)), "1")
+		have := stt.entry("b", reflect.ValueOf(new(1)), "1", false)
 
 		// --- Then ---
 		assert.NotSame(t, ent.key.Interface(), have.key.Interface())
@@ -3057,7 +3088,7 @@ func Test_Decoder_requiredIn(t *testing.T) {
 		seen := map[ptrKey]bool{}
 
 		stt := newState()
-		stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2")
+		stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2", false)
 
 		var have []string
 		setErr := func(pth string, _ error) { have = append(have, pth) }
