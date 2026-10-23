@@ -8,13 +8,13 @@
 Bind URL query and form values to Go structs and back, and decode JSON request
 bodies strictly.
 
-xbind maps `url.Values` onto struct fields by dotted key paths read from the
-`url` struct tag, and encodes structs back into `url.Values` with the same
-keys, so an HTTP handler can declare its parameters as a struct. Problems with
-individual values come back as per-key field errors with error codes, ready to
-send to an API client. A small JSON helper set decodes request bodies,
-rejecting unknown fields and trailing data, and translates `encoding/json`
-errors into the same error style.
+xbind maps `url.Values` onto struct fields by key paths built from the `url`
+struct tag (`page.size`, `attr[color]`, `items[0].name`), and encodes structs
+back into `url.Values` with the same keys, so an HTTP handler can declare its
+parameters as a struct. Problems with individual values come back as per-key
+field errors with error codes, ready to send to an API client. A small JSON
+helper set decodes request bodies, rejecting unknown fields and trailing data,
+and translates `encoding/json` errors into the same error style.
 
 ## Features
 
@@ -22,7 +22,8 @@ errors into the same error style.
   and an option to allow unknown keys.
 - `Encoder`: a struct to `url.Values`, with `omitempty` and ignored fields.
 - Nested structs, embedded structs, slices, arrays and maps, addressed by
-  dotted key paths (`page.size`, `attr.color`).
+  field names after dots and map keys and indexes in brackets (`page.size`,
+  `attr[color]`, `items[0].name`).
 - `bool`, `string`, integer (except `uintptr`) and float types and their
   named variants, `time.Time` (RFC 3339) and `time.Duration`.
 - Custom types through `encoding.TextUnmarshaler` / `encoding.TextMarshaler`,
@@ -67,7 +68,7 @@ type Query struct {
 }
 
 src, _ := url.ParseQuery("" +
-	"name=report&tag=a&tag=b&attr.color=red&" +
+	"name=report&tag=a&tag=b&attr[color]=red&" +
 	"since=2026-01-02T03:04:05Z&page.size=10&page.number=2",
 )
 

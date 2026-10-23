@@ -28,7 +28,7 @@ func ExampleDecoder_Decode() {
 	}
 
 	src, _ := url.ParseQuery("" +
-		"name=report&tag=a&tag=b&attr.color=red&" +
+		"name=report&tag=a&tag=b&attr[color]=red&" +
 		"since=2026-01-02T03:04:05Z&page.size=10&page.number=2",
 	)
 
