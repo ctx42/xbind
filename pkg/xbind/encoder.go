@@ -445,10 +445,10 @@ func (enc *Encoder) encodeMap(
 // is encoded as one text value: by a registered encoder, by its
 // [encoding.TextMarshaler], or by a built-in encoder. A [Marshaler] is not.
 func (enc *Encoder) isValueType(typ reflect.Type) bool {
-	typ = indirect(typ)
 	if enc.reg.lookup(typ) != nil {
-		return true
+		return true // Registered for typ or for the type it points to.
 	}
+	typ = indirect(typ)
 	ptr := reflect.PointerTo(typ)
 	if typ.Implements(iMarshaler) || ptr.Implements(iMarshaler) {
 		return false

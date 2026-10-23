@@ -1168,6 +1168,24 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
+	t.Run("registered for pointer elements", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder(WithEncFunc(func(pnt *TPoint) (string, error) {
+			return encPoint(*pnt)
+		}))
+		dst := url.Values{}
+		s := struct {
+			L []*TPoint `url:"l"`
+		}{L: []*TPoint{{1, 2}, {3, 4}}}
+
+		// --- When ---
+		err := enc.Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"l": {"1,2", "3,4"}}, dst)
+	})
+
 	t.Run("registered encoder", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -2420,6 +2438,21 @@ func Test_Encoder_encodeMap_tabular(t *testing.T) {
 			assert.Equal(t, tc.want, dst)
 		})
 	}
+}
+
+func Test_Encoder_isValueType(t *testing.T) {
+	t.Run("registered for pointer", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder(WithEncFunc(func(pnt *TPoint) (string, error) {
+			return encPoint(*pnt)
+		}))
+
+		// --- When ---
+		have := enc.isValueType(reflect.TypeFor[*TPoint]())
+
+		// --- Then ---
+		assert.True(t, have)
+	})
 }
 
 func Test_Encoder_isValueType_tabular(t *testing.T) {
