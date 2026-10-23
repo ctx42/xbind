@@ -1455,6 +1455,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, TPoint{X: 3, Y: 4}, *dst.PP)
 	})
 
+	t.Run("error - pointer decoder", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(string) (*TPoint, error) {
+			return nil, errTest
+		}))
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"p": {"1,2"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldCnt(t, 1, err)
+		xrrtest.AssertFieldIs(t, "p", errTest, err)
+	})
+
 	t.Run("error - nil from pointer decoder", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(WithDecFunc(func(string) (*TPoint, error) {
