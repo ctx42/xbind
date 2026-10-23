@@ -2102,6 +2102,36 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
+	t.Run("error - keys with one text", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf(map[*int]string{new(1): "a", new(1): "b"})
+
+		// --- When ---
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		want := "M: invalid value: duplicate map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 1, dst["M[1]"])
+	})
+
+	t.Run("error - first bad key in key order", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		m := map[string]int{"a[": 1, "": 2, "b": 3, "c]": 4}
+		src := reflect.ValueOf(m)
+
+		// --- When ---
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+
+		// --- Then ---
+		want := "M: invalid value: empty map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Empty(t, dst)
+	})
+
 	t.Run("key pointing to nil pointer", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

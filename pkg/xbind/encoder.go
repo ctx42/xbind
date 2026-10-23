@@ -7,6 +7,7 @@ import (
 	"encoding"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -75,22 +76,23 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // and array elements other than plain values, such as structs, maps, slices and
 // [Marshaler] values, in brackets ("attr[k]", "list[0].name"); plain values,
 // encoded as one text each, as values of one key. A map key that is empty,
-// holds a bracket or is a NaN is an [ErrInvValue] error. A [Marshaler]
-// implemented by src, or by a struct embedded in it, encodes the whole struct;
-// [encoding.TextMarshaler] and functions registered with [WithEncFunc] apply
-// only to values with a key, so src and the structs embedded in it are encoded
-// field by field. A nil pointer or interface adds nothing: a nil field has no
-// key, a map entry with a nil key or value is left out, and a nil plain value
-// in a slice or array has no value, so the elements after it move up one place
-// when decoded. An indexed element or a map value adding no keys, such as a nil
-// pointer, an empty slice or a struct whose fields are all empty and omitempty,
-// is not written either, so such a map entry, or such an element at the end of
-// a slice, does not decode back. A pointer to a struct, or a map or slice,
-// already being encoded, a cycle, is an [ErrCycle] error keyed by the field
-// path of the repeated value, and a struct tag of src that does not parse, or
-// that names a field with a bracket ("ids[]"), is an [ErrInvTag] error. On
-// error, dst keeps the values encoded before the error, which may include some
-// values of the failing field.
+// holds a bracket or is a NaN is an [ErrInvValue] error, and so are two keys of
+// one map encoded to one text; the entries of a map are encoded in the order of
+// their key texts. A [Marshaler] implemented by src, or by a struct embedded in
+// it, encodes the whole struct; [encoding.TextMarshaler] and functions
+// registered with [WithEncFunc] apply only to values with a key, so src and the
+// structs embedded in it are encoded field by field. A nil pointer or interface
+// adds nothing: a nil field has no key, a map entry with a nil key or value is
+// left out, and a nil plain value in a slice or array has no value, so the
+// elements after it move up one place when decoded. An indexed element or a map
+// value adding no keys, such as a nil pointer, an empty slice or a struct whose
+// fields are all empty and omitempty, is not written either, so such a map
+// entry, or such an element at the end of a slice, does not decode back. A
+// pointer to a struct, or a map or slice, already being encoded, a cycle, is an
+// [ErrCycle] error keyed by the field path of the repeated value, and a struct
+// tag of src that does not parse, or that names a field with a bracket
+// ("ids[]"), is an [ErrInvTag] error. On error, dst keeps the values encoded
+// before the error, which may include some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
@@ -364,8 +366,9 @@ func (enc *Encoder) encodeSlice(
 
 // encodeMap encodes the src map to dst, each value under the prefix key and its
 // map key ("attr[k]"). The keys are encoded with [encoding.TextMarshaler] or
-// the base type encoders; an empty key, one with a bracket, or a NaN is an
-// error. The seen map is passed to the encode method.
+// the base type encoders; an empty key, one with a bracket, a NaN, and two keys
+// encoded to one text are errors. The entries are encoded in the order of their
+// key texts. The seen map is passed to the encode method.
 func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
@@ -373,6 +376,12 @@ func (enc *Encoder) encodeMap(
 	seen map[ptrKey]bool,
 ) error {
 
+	type pair struct {
+		key string        // Encoded map key.
+		mk  reflect.Value // Map key.
+		val reflect.Value // Map value.
+	}
+	var prs []pair
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
 		if mk.Kind() == reflect.Interface && !mk.IsNil() {
@@ -391,24 +400,34 @@ func (enc *Encoder) encodeMap(
 		if err != nil {
 			return fieldError(prefix, err)
 		}
+		prs = append(prs, pair{key: key, mk: mk, val: it.Value()})
+	}
+	// In key order, the output and the first error are the same every time.
+	slices.SortFunc(prs, func(a, b pair) int {
+		return strings.Compare(a.key, b.key)
+	})
+	for i, pr := range prs {
 		var format string
 		switch {
-		case isNaN(mk):
+		case isNaN(pr.mk):
 			format = "%w: NaN map key" // Decode rejects it.
 
-		case key == "":
+		case pr.key == "":
 			format = "%w: empty map key"
 
-		case strings.ContainsAny(key, "[]"):
+		case strings.ContainsAny(pr.key, "[]"):
 			format = "%w: map key with a bracket"
+
+		case i > 0 && prs[i-1].key == pr.key:
+			format = "%w: duplicate map key" // Decode takes them as one.
 		}
 		if format != "" {
-			err = xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
+			err := xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 			return fieldError(prefix, err)
 		}
-		pth := prefix + "[" + key + "]"
-		val := addressable(it.Value())
-		if err = enc.encode(dst, pth, val, seen, level{}); err != nil {
+		pth := prefix + "[" + pr.key + "]"
+		val := addressable(pr.val)
+		if err := enc.encode(dst, pth, val, seen, level{}); err != nil {
 			return err
 		}
 	}
