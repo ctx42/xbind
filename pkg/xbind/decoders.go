@@ -268,13 +268,21 @@ func decUint64(vls ...string) (any, error) {
 	return v, nil
 }
 
-// decTime converts an RFC 3339 string to [time.Time], keeping its offset.
+// decTime converts an RFC 3339 string to [time.Time], keeping its offset. An
+// offset hour over 23 or minute over 59, which [time.Parse] takes but
+// [time.Time.MarshalText] rejects, is an error.
 func decTime(vls ...string) (any, error) {
 	val, err := single(vls)
 	if err != nil {
 		return nil, err
 	}
 	v, err := time.Parse(time.RFC3339, val)
+	if n := len(val); err == nil && strings.ContainsAny(val[n-6:n-5], "+-") {
+		// The value ends in a "+hh:mm" offset.
+		if val[n-5:n-3] > "23" || val[n-2:] > "59" {
+			err = ErrTimeFormat
+		}
+	}
 	if err != nil {
 		code := xrr.WithCode(ECInvTimeFormat)
 		return nil, xrr.Newf("%w: %#q", ErrTimeFormat, val, code)

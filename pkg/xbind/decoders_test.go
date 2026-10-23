@@ -1147,6 +1147,25 @@ func Test_decTime(t *testing.T) {
 		xrrtest.AssertCode(t, ECInvTimeFormat, err)
 	})
 
+	t.Run("error - offset hour out of range", func(t *testing.T) {
+		// --- When ---
+		_, err := decTime("2022-01-01T00:00:00+24:00")
+
+		// --- Then ---
+		want := "invalid RFC3339 time: `2022-01-01T00:00:00+24:00`"
+		assert.ErrorEqual(t, want, err)
+		assert.ErrorIs(t, ErrTimeFormat, err)
+	})
+
+	t.Run("error - offset minute out of range", func(t *testing.T) {
+		// --- When ---
+		_, err := decTime("2022-01-01T00:00:00-10:60")
+
+		// --- Then ---
+		want := "invalid RFC3339 time: `2022-01-01T00:00:00-10:60`"
+		assert.ErrorEqual(t, want, err)
+	})
+
 	t.Run("error - require single value", func(t *testing.T) {
 		// --- When ---
 		_, err := decTime("2000-01-02T03:04:05Z", "2001-01-02T03:04:05Z")
@@ -1177,6 +1196,12 @@ func Test_decTime_tabular(t *testing.T) {
 			[]string{"2022-03-15T11:43:01+02:00"},
 			time.Date(2022, 3, 15, 10, 43, 1, 0, waw),
 			2 * 60 * 60,
+		},
+		{
+			"largest offset",
+			[]string{"2022-03-15T23:59:00+23:59"},
+			time.Date(2022, 3, 15, 0, 0, 0, 0, time.UTC),
+			23*60*60 + 59*60,
 		},
 	}
 
