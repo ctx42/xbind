@@ -380,12 +380,19 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 // state is the state of one Decode call.
 type state struct {
 	reset   map[string]bool     // Canonical paths of slices and arrays reset.
-	log     []string            // The paths in reset, in the order set.
+	log     []resetLog          // The resets, in the order made.
 	entries map[string]mapEntry // Map entries reached, by entry identity.
 	failed  map[string]bool     // Canonical paths of the values that failed.
 	set     map[string]bool     // Canonical paths of the values src keys set.
 	indexed map[string]bool     // Canonical paths of the indexed containers.
 	budget  int                 // Slice elements indexed keys may still add.
+}
+
+// resetLog is a reset of a slice or array, or a value a src key sets.
+type resetLog struct {
+	pth string        // Canonical path of the value.
+	val reflect.Value // The value, when the reset zeroed it.
+	old reflect.Value // A copy of val from before the reset.
 }
 
 // mapEntry is a map entry src keys reach.
@@ -426,18 +433,32 @@ func (stt *state) entry(pth string, key reflect.Value, txt string) mapEntry {
 	return ent
 }
 
-// markReset records the canonical path pth as reset.
-func (stt *state) markReset(pth string) {
-	if !stt.reset[pth] {
-		stt.reset[pth] = true
-		stt.log = append(stt.log, pth)
+// markReset records the canonical path pth as reset. A valid val is the
+// value at pth, which is saved and zeroed, so undo can set it back.
+func (stt *state) markReset(pth string, val reflect.Value) {
+	if stt.reset[pth] {
+		return
 	}
+	stt.reset[pth] = true
+	ent := resetLog{pth: pth}
+	if val.IsValid() {
+		ent.val = val
+		ent.old = reflect.New(val.Type()).Elem()
+		ent.old.Set(val)
+		val.SetZero()
+	}
+	stt.log = append(stt.log, ent)
 }
 
-// undo forgets the paths reset since the log held n of them.
+// undo forgets the resets made since the log held n of them, and sets back
+// the values they zeroed, latest first.
 func (stt *state) undo(n int) {
-	for _, pth := range stt.log[n:] {
-		delete(stt.reset, pth)
+	for i := len(stt.log) - 1; i >= n; i-- {
+		ent := stt.log[i]
+		delete(stt.reset, ent.pth)
+		if ent.val.IsValid() {
+			ent.val.Set(ent.old)
+		}
 	}
 	stt.log = stt.log[:n]
 }
@@ -464,7 +485,7 @@ func (dec *Decoder) apply(
 			return keyConflict()
 		}
 		stt.set[pth] = true
-		stt.markReset(pth)
+		stt.markReset(pth, reflect.Value{})
 		ok, err := setDst(dst, dec.reg, vls...)
 		if !ok {
 			return decNotFound(dst.Type())
@@ -516,7 +537,7 @@ func (dec *Decoder) apply(
 		mark := len(stt.log)
 		err = dec.apply(val, steps[1:], vls, stt, kpt)
 		if err != nil {
-			stt.undo(mark) // The value with the resets is dropped.
+			stt.undo(mark) // A value the map shares keeps its data.
 			return err
 		}
 		dst.SetMapIndex(key, val)
@@ -527,10 +548,7 @@ func (dec *Decoder) apply(
 			return keyConflict()
 		}
 		stt.indexed[pth] = true
-		if !stt.reset[pth] {
-			stt.markReset(pth)
-			dst.SetZero()
-		}
+		stt.markReset(pth, dst)
 		size := dst.Len()
 		var prev reflect.Value // The slice before it grew.
 		if dst.Kind() == reflect.Slice && size <= stp.pos {

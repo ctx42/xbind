@@ -1642,6 +1642,27 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.Items)
 	})
 
+	t.Run("error - pointer map value keeps its slice", func(t *testing.T) {
+		// --- Given ---
+		type item struct {
+			L []int `url:"l"`
+		}
+		dst := &struct {
+			M map[string]*item `url:"m"`
+		}{M: map[string]*item{"k": {L: []int{1, 2}}}}
+		src := url.Values{"m[k].l[0]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"m[k].l[0]: invalid value: cannot convert `x` to int " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, []int{1, 2}, dst.M["k"].L)
+	})
+
 	t.Run("error - map entry not written on error", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{Items: map[string]TItem{"a": {Size: 1}}}
@@ -2446,17 +2467,35 @@ func Test_newState(t *testing.T) {
 }
 
 func Test_state_markReset(t *testing.T) {
-	// --- Given ---
-	stt := newState()
+	t.Run("paths", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
 
-	// --- When ---
-	stt.markReset("a")
-	stt.markReset("b")
-	stt.markReset("a")
+		// --- When ---
+		stt.markReset("a", reflect.Value{})
+		stt.markReset("b", reflect.Value{})
+		stt.markReset("a", reflect.Value{})
 
-	// --- Then ---
-	assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
-	assert.Equal(t, []string{"a", "b"}, stt.log)
+		// --- Then ---
+		assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
+		assert.Len(t, 2, stt.log)
+		assert.Equal(t, "a", stt.log[0].pth)
+		assert.Equal(t, "b", stt.log[1].pth)
+	})
+
+	t.Run("zeroes the value", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		s := []int{1, 2}
+
+		// --- When ---
+		stt.markReset("a", reflect.ValueOf(&s).Elem())
+
+		// --- Then ---
+		assert.Nil(t, s)
+		assert.Len(t, 1, stt.log)
+		assert.Equal(t, []int{1, 2}, stt.log[0].old.Interface())
+	})
 }
 
 func Test_state_entry(t *testing.T) {
@@ -2504,17 +2543,21 @@ func Test_state_entry(t *testing.T) {
 
 func Test_state_undo(t *testing.T) {
 	// --- Given ---
+	s := []int{1, 2}
+
 	stt := newState()
-	stt.markReset("a")
-	stt.markReset("b")
-	stt.markReset("c")
+	stt.markReset("a", reflect.Value{})
+	stt.markReset("b", reflect.ValueOf(&s).Elem())
+	stt.markReset("c", reflect.Value{})
 
 	// --- When ---
 	stt.undo(1)
 
 	// --- Then ---
 	assert.Equal(t, map[string]bool{"a": true}, stt.reset)
-	assert.Equal(t, []string{"a"}, stt.log)
+	assert.Len(t, 1, stt.log)
+	assert.Equal(t, "a", stt.log[0].pth)
+	assert.Equal(t, []int{1, 2}, s)
 }
 
 func Test_Decoder_apply(t *testing.T) {
@@ -2554,7 +2597,7 @@ func Test_Decoder_apply(t *testing.T) {
 		s := []TRequired{{FStr: "a"}}
 		dst := reflect.ValueOf(&s).Elem()
 		stt := newState()
-		stt.markReset("")
+		stt.markReset("", reflect.Value{})
 		stp := []step{
 			{kind: stepIndex, pos: 3, name: "[3]"},
 			{kind: stepField, idx: []int{1}, name: "f_int"},
