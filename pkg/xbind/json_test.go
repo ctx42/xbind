@@ -445,6 +445,7 @@ func Test_UnmarshalJSONBody(t *testing.T) {
 		// --- Given ---
 		req := httptest.NewRequest(http.MethodPost, "/api", nil)
 		req.Body = nil
+
 		dst := &data{}
 
 		// --- When ---

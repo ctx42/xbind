@@ -1513,6 +1513,7 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("error - pointer cycle", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
+
 		s := &TNode{Val: 1}
 		s.Next = &TNode{Val: 2, Next: s}
 
@@ -1527,6 +1528,7 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("error - embedding cycle", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
+
 		s := &TCycle{}
 		s.TCycle = s
 

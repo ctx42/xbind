@@ -457,6 +457,5 @@ func Test_addressable(t *testing.T) {
 	// --- Then ---
 	assert.True(t, have.CanAddr())
 	assert.Equal(t, 1, have.Interface())
-
 	assert.False(t, val.CanAddr())
 }
