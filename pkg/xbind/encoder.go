@@ -25,7 +25,7 @@ var iTextMarshaler = reflect.TypeFor[encoding.TextMarshaler]()
 // ready to use and reads the "url" struct tag.
 type Encoder struct {
 	tag string // Struct field tag to use for aliasing.
-	reg encReg // Custom encoders for types.
+	reg encReg // Encoders registered with WithEncFunc.
 }
 
 // EncoderOption configures an [Encoder] built by [NewEncoder].
@@ -37,13 +37,28 @@ func WithEncTag(tag string) EncoderOption {
 	return func(enc *Encoder) { enc.tag = tag }
 }
 
+// WithEncFunc is a [NewEncoder] option encoding every value of type T with
+// fn: fields of type T or *T, and slice, array and map elements and map keys
+// of those types. The function takes precedence over the [Marshaler] and
+// [encoding.TextMarshaler] methods of T and the encoders the package
+// provides, [time.Duration] included.
+func WithEncFunc[T any](fn func(T) (string, error)) EncoderOption {
+	typ := reflect.TypeFor[T]()
+	return func(enc *Encoder) {
+		if enc.reg == nil {
+			enc.reg = make(encReg)
+		}
+		enc.reg[typ] = func(v reflect.Value) (string, error) {
+			val, _ := reflect.TypeAssert[T](v)
+			return fn(val)
+		}
+	}
+}
+
 // NewEncoder returns a new instance of [Encoder] reading the "url" struct tag
 // unless the [WithEncTag] option says otherwise.
 func NewEncoder(opts ...EncoderOption) *Encoder {
-	enc := &Encoder{
-		tag: defaultTag,
-		reg: make(encReg),
-	}
+	enc := &Encoder{tag: defaultTag}
 	for _, opt := range opts {
 		opt(enc)
 	}
@@ -222,8 +237,9 @@ func encSrc(
 	}
 
 	typ := src.Type()
+	efn := reg.lookup(typ)
 	// The methods of a value read from an unexported field cannot be called.
-	if isMarshaler(typ) && src.CanInterface() {
+	if efn == nil && isMarshaler(typ) && src.CanInterface() {
 		if isNil(src) {
 			return true, nil
 		}
@@ -239,7 +255,10 @@ func encSrc(
 		return true, nil
 	}
 
-	if efn := encFor(typ, reg); efn != nil {
+	if efn == nil {
+		efn = encFor(typ, reg)
+	}
+	if efn != nil {
 		if isNil(src) {
 			return true, nil
 		}
@@ -330,6 +349,9 @@ func encMap(
 func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	if key.Kind() == reflect.Interface {
 		key = key.Elem()
+	}
+	if efn := reg.lookup(key.Type()); efn != nil {
+		return efn(key)
 	}
 	if key.Kind() != reflect.Pointer {
 		ptr := addressable(key).Addr()

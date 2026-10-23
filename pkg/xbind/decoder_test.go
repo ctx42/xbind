@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,22 @@ func Test_WithDecAllowUnknown(t *testing.T) {
 	assert.True(t, dec.allowUnknown)
 }
 
+func Test_WithDecFunc(t *testing.T) {
+	// --- Given ---
+	dec := &Decoder{}
+
+	// --- When ---
+	WithDecFunc(decPoint)(dec)
+
+	// --- Then ---
+	have, err := dec.reg[reflect.TypeFor[TPoint]()]("1,2")
+	assert.NoError(t, err)
+	assert.Equal(t, TPoint{X: 1, Y: 2}, have)
+
+	_, err = dec.reg[reflect.TypeFor[TPoint]()]("1,2", "3,4")
+	assert.ErrorIs(t, ErrReqSingleValue, err)
+}
+
 func Test_NewDecoder(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		// --- When ---
@@ -53,19 +70,21 @@ func Test_NewDecoder(t *testing.T) {
 		// --- Then ---
 		assert.Equal(t, "url", have.tag)
 		assert.False(t, have.allowUnknown)
-		assert.Len(t, 2, have.reg)
-		assert.HasKey(t, typTime, have.reg)
-		assert.HasKey(t, typDur, have.reg)
+		assert.Nil(t, have.reg)
 	})
 
 	t.Run("with options", func(t *testing.T) {
 		// --- When ---
-		have := NewDecoder(WithDecTag("abc"), WithDecAllowUnknown())
+		have := NewDecoder(
+			WithDecTag("abc"),
+			WithDecAllowUnknown(),
+			WithDecFunc(decPoint),
+		)
 
 		// --- Then ---
 		assert.Equal(t, "abc", have.tag)
 		assert.True(t, have.allowUnknown)
-		assert.Len(t, 2, have.reg)
+		assert.HasKey(t, reflect.TypeFor[TPoint](), have.reg)
 	})
 }
 
@@ -1185,6 +1204,66 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldIs(t, "n", ErrInvValue, err)
 	})
 
+	t.Run("registered decoder", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			T  time.Time            `url:"t"`
+			TP *time.Time           `url:"tp"`
+			TS []time.Time          `url:"ts"`
+			TM map[string]time.Time `url:"tm"`
+			P  TPoint               `url:"p"`
+			PP *TPoint              `url:"pp"`
+			L  TLevel               `url:"l"`
+		}{}
+		src := url.Values{
+			"t":    {"2026-01-02"},
+			"tp":   {"2026-01-03"},
+			"ts":   {"2026-01-04", "2026-01-05"},
+			"tm.a": {"2026-01-06"},
+			"p":    {"1,2"},
+			"pp":   {"3,4"},
+			"l":    {"9"},
+		}
+		dec := NewDecoder(
+			WithDecFunc(func(s string) (time.Time, error) {
+				return time.Parse(time.DateOnly, s)
+			}),
+			WithDecFunc(decPoint),
+			WithDecFunc(func(s string) (TLevel, error) {
+				n, err := strconv.Atoi(s)
+				return TLevel(n), err
+			}),
+		)
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 2, dst.T.Day())
+		assert.Equal(t, 3, dst.TP.Day())
+		assert.Equal(t, 5, dst.TS[1].Day())
+		assert.Equal(t, 6, dst.TM["a"].Day())
+		assert.Equal(t, TPoint{X: 1, Y: 2}, dst.P)
+		assert.Equal(t, TPoint{X: 3, Y: 4}, *dst.PP)
+		assert.Equal(t, TLevel(9), dst.L)
+	})
+
+	t.Run("error - registered decoder", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"p": {"x"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecFunc(decPoint)).Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldCnt(t, 1, err)
+		assert.ErrorContain(t, "expected integer", err)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- When ---
 		err := NewDecoder().Decode(badTag(`url:n`, false), url.Values{})
@@ -1948,7 +2027,8 @@ func Test_Decoder_isLeaf_tabular(t *testing.T) {
 		val  reflect.Value
 		want bool
 	}{
-		{"registered", reflect.ValueOf(time.Time{}), true},
+		{"registered", reflect.ValueOf(TPoint{}), true},
+		{"pointer to registered", reflect.ValueOf(&TPoint{}), true},
 		{"unmarshaler", reflect.ValueOf(&TItf{}), true},
 		{"addressable unmarshaler", reflect.ValueOf(&TItf{}).Elem(), true},
 		{"not addressable unmarshaler", reflect.ValueOf(TItf{}), false},
@@ -1958,7 +2038,7 @@ func Test_Decoder_isLeaf_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := NewDecoder().isLeaf(tc.val)
+			have := NewDecoder(WithDecFunc(decPoint)).isLeaf(tc.val)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)

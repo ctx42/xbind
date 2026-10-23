@@ -15,6 +15,23 @@ type encFn func(reflect.Value) (string, error)
 // encReg is a map of custom types to encoders.
 type encReg map[reflect.Type]encFn
 
+// lookup returns the encoder registered for typ, or for the type typ points
+// to, or nil when none is registered. The encoder for a pointer type must not
+// be called with a nil pointer.
+func (reg encReg) lookup(typ reflect.Type) encFn {
+	if efn, ok := reg[typ]; ok {
+		return efn
+	}
+	if typ.Kind() == reflect.Pointer {
+		if efn, ok := reg[typ.Elem()]; ok {
+			return func(v reflect.Value) (string, error) {
+				return efn(v.Elem())
+			}
+		}
+	}
+	return nil
+}
+
 // encFor returns the encoder function for the base type represented by typ,
 // looking in the reg registry first, or nil if no encoder can be found. The
 // encoder of a pointer type must not be called with a nil pointer.

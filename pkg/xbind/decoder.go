@@ -16,9 +16,6 @@ import (
 	"github.com/ctx42/mirror/pkg/mirror"
 )
 
-// TODO(rz): Add options to encoders and decoders so we can for example pass
-//  time format when encoding and decoding.
-
 // iUnmarshaler is used to check if a type implements the
 // [encoding.TextUnmarshaler] interface.
 var iUnmarshaler = reflect.TypeFor[encoding.TextUnmarshaler]()
@@ -38,24 +35,41 @@ func WithDecAllowUnknown() DecoderOption {
 	return func(dec *Decoder) { dec.allowUnknown = true }
 }
 
+// WithDecFunc is a [NewDecoder] option decoding every value of type T with
+// fn: fields of type T or *T, and slice, array and map elements and map keys
+// of those types. A value of type T takes a single src value, and an error
+// returned by fn is returned as is. The function takes precedence over the
+// [encoding.TextUnmarshaler] method of T and the decoders the package
+// provides, [time.Time] and [time.Duration] included. T must not be a pointer
+// type.
+func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
+	typ := reflect.TypeFor[T]()
+	return func(dec *Decoder) {
+		if dec.reg == nil {
+			dec.reg = make(decReg)
+		}
+		dec.reg[typ] = func(vls ...string) (any, error) {
+			val, err := single(vls)
+			if err != nil {
+				return nil, err
+			}
+			return fn(val)
+		}
+	}
+}
+
 // Decoder decodes [url.Values] to a struct. The zero value is ready to use,
 // reads the "url" struct tag and rejects unknown keys.
 type Decoder struct {
 	tag          string // Struct field tag to use for aliasing.
 	allowUnknown bool   // Allow unknown fields.
-	reg          decReg // Custom decoders registry.
+	reg          decReg // Decoders registered with WithDecFunc.
 }
 
 // NewDecoder returns a new instance of [Decoder] reading the "url" struct tag
 // and rejecting unknown keys unless the options say otherwise.
 func NewDecoder(opts ...DecoderOption) *Decoder {
-	dec := &Decoder{
-		tag: defaultTag,
-		reg: decReg{
-			typTime: decTime,
-			typDur:  decDur,
-		},
-	}
+	dec := &Decoder{tag: defaultTag}
 	for _, opt := range opts {
 		opt(dec)
 	}
@@ -214,7 +228,7 @@ func (dec *Decoder) resolve(
 		}
 
 		if typ := indirect(ret.Type()); typ.Kind() == reflect.Struct &&
-			typ != typTime {
+			typ != typTime && dec.reg[typ] == nil {
 
 			sv := fv.NewIfNil().StructValue()
 			return dec.resolve(fldPath, remainder[1:], sv, nil)
@@ -291,7 +305,9 @@ func (dec *Decoder) required(
 // isLeaf returns true if the struct, or pointer to a struct, val is set as a
 // whole: by a registered decoder or by its [encoding.TextUnmarshaler].
 func (dec *Decoder) isLeaf(val reflect.Value) bool {
-	if dec.reg[val.Type()] != nil || val.Type().Implements(iUnmarshaler) {
+	if dec.reg[indirect(val.Type())] != nil ||
+		val.Type().Implements(iUnmarshaler) {
+
 		return true
 	}
 	return val.CanAddr() && val.Addr().Type().Implements(iUnmarshaler)
@@ -373,8 +389,10 @@ func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
 		}
 		dst = dst.Elem()
 	}
-	if ok, err := useUnmarshal(dst, vls...); ok {
-		return true, err
+	if reg[dst.Type()] == nil {
+		if ok, err := useUnmarshal(dst, vls...); ok {
+			return true, err
+		}
 	}
 
 	typ := dst.Type()
@@ -473,6 +491,10 @@ func setMap(dst reflect.Value, reg decReg, key string, vls ...string) error {
 // representation of the map key.
 func setField(dst reflect.Value, reg decReg, key string, vls ...string) error {
 	val := reflect.Indirect(dst)
+	if val.IsValid() && reg[val.Type()] != nil {
+		_, err := setDst(dst, reg, vls...)
+		return err
+	}
 	if ok, err := useUnmarshal(val, vls...); ok {
 		return err
 	}

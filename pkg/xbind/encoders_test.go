@@ -12,6 +12,40 @@ import (
 	"github.com/ctx42/testing/pkg/must"
 )
 
+func Test_encReg_lookup(t *testing.T) {
+	enc := func(v reflect.Value) (string, error) {
+		return encPoint(v.Interface().(TPoint)) //nolint:forcetypeassert
+	}
+	reg := encReg{reflect.TypeFor[TPoint](): enc}
+
+	t.Run("registered", func(t *testing.T) {
+		// --- When ---
+		have := reg.lookup(reflect.TypeFor[TPoint]())
+
+		// --- Then ---
+		assert.Equal(t, "1,2", must.Value(have(reflect.ValueOf(TPoint{1, 2}))))
+	})
+
+	t.Run("pointer to registered", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf(&TPoint{3, 4})
+
+		// --- When ---
+		have := reg.lookup(reflect.TypeFor[*TPoint]())
+
+		// --- Then ---
+		assert.Equal(t, "3,4", must.Value(have(val)))
+	})
+
+	t.Run("not registered", func(t *testing.T) {
+		// --- When ---
+		have := reg.lookup(reflect.TypeFor[*int]())
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+}
+
 func Test_encFor(t *testing.T) {
 	type s struct{ F int }
 

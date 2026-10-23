@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -29,6 +30,20 @@ func Test_WithEncTag(t *testing.T) {
 	assert.Equal(t, "abc", enc.tag)
 }
 
+func Test_WithEncFunc(t *testing.T) {
+	// --- Given ---
+	enc := &Encoder{}
+
+	// --- When ---
+	WithEncFunc(encPoint)(enc)
+
+	// --- Then ---
+	fn := enc.reg[reflect.TypeFor[TPoint]()]
+	have, err := fn(reflect.ValueOf(TPoint{X: 1, Y: 2}))
+	assert.NoError(t, err)
+	assert.Equal(t, "1,2", have)
+}
+
 func Test_NewEncoder(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
 		// --- When ---
@@ -36,15 +51,16 @@ func Test_NewEncoder(t *testing.T) {
 
 		// --- Then ---
 		assert.Equal(t, "url", have.tag)
-		assert.NotNil(t, have.reg)
+		assert.Nil(t, have.reg)
 	})
 
 	t.Run("options called", func(t *testing.T) {
 		// --- When ---
-		have := NewEncoder(WithEncTag("abc"))
+		have := NewEncoder(WithEncTag("abc"), WithEncFunc(encPoint))
 
 		// --- Then ---
 		assert.Equal(t, "abc", have.tag)
+		assert.HasKey(t, reflect.TypeFor[TPoint](), have.reg)
 	})
 }
 
@@ -1136,6 +1152,54 @@ func Test_Encoder_Encode(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, url.Values{"M.NaN": {"x"}}, dst)
+	})
+
+	t.Run("registered encoder", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		tim := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+		s := &struct {
+			T  time.Time            `url:"t"`
+			TP *time.Time           `url:"tp"`
+			TS []time.Time          `url:"ts"`
+			TK map[time.Time]string `url:"tk"`
+			P  TPoint               `url:"p"`
+			PP *TPoint              `url:"pp"`
+			L  TLevel               `url:"l"`
+		}{
+			T:  tim,
+			TP: &tim,
+			TS: []time.Time{tim},
+			TK: map[time.Time]string{tim: "k"},
+			P:  TPoint{X: 1, Y: 2},
+			PP: &TPoint{X: 3, Y: 4},
+			L:  TLevel(9),
+		}
+		enc := NewEncoder(
+			WithEncFunc(func(tim time.Time) (string, error) {
+				return tim.Format(time.DateOnly), nil
+			}),
+			WithEncFunc(encPoint),
+			WithEncFunc(func(lvl TLevel) (string, error) {
+				return strconv.Itoa(int(lvl)), nil
+			}),
+		)
+
+		// --- When ---
+		err := enc.Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"t":             {"2026-01-02"},
+			"tp":            {"2026-01-02"},
+			"ts":            {"2026-01-02"},
+			"tk.2026-01-02": {"k"},
+			"p":             {"1,2"},
+			"pp":            {"3,4"},
+			"l":             {"9"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("error - malformed struct tag", func(t *testing.T) {

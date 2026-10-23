@@ -107,3 +107,44 @@ func ExampleUnmarshalJSON() {
 	// true
 	// json: unknown field "age"
 }
+
+func ExampleWithDecFunc() {
+	type Query struct {
+		Day time.Time `url:"day"`
+	}
+
+	dateOnly := func(s string) (time.Time, error) {
+		return time.Parse(time.DateOnly, s)
+	}
+	dec := xbind.NewDecoder(xbind.WithDecFunc(dateOnly))
+
+	dst := &Query{}
+	if err := dec.Decode(dst, url.Values{"day": {"2026-01-02"}}); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(dst.Day.Format(time.RFC3339))
+	// Output:
+	// 2026-01-02T00:00:00Z
+}
+
+func ExampleWithEncFunc() {
+	type Query struct {
+		Day time.Time `url:"day"`
+	}
+
+	dateOnly := func(t time.Time) (string, error) {
+		return t.Format(time.DateOnly), nil
+	}
+	enc := xbind.NewEncoder(xbind.WithEncFunc(dateOnly))
+
+	dst := url.Values{}
+	src := Query{Day: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}
+	if err := enc.Encode(dst, src); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(dst.Encode())
+	// Output:
+	// day=2026-01-02
+}

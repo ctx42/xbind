@@ -23,7 +23,8 @@ errors into the same error style.
 - `bool`, `string`, integer (except `uintptr`) and float types and their
   named variants, `time.Time` (RFC 3339) and `time.Duration`.
 - Custom types through `encoding.TextUnmarshaler` / `encoding.TextMarshaler`,
-  and whole-struct encoding through the `Marshaler` interface.
+  whole-struct encoding through the `Marshaler` interface, and per-type
+  functions registered with `WithDecFunc` / `WithEncFunc`.
 - Structured errors built on [ctx42/xrr](https://github.com/ctx42/xrr): the
   package's errors carry codes, and value errors are field errors keyed by the
   source key.
@@ -185,6 +186,17 @@ encoded with `MarshalText`. A type that needs more than one key implements
 type Marshaler interface {
 	MarshalValues(dst url.Values, prefix string) error
 }
+```
+
+For a type you cannot add methods to, or to change how a type is read or
+written (`time.Time` as a date only, say), register a function with
+`WithDecFunc` or `WithEncFunc`. It takes precedence over the type's own
+methods and over the package's codecs:
+
+```go
+dec := xbind.NewDecoder(xbind.WithDecFunc(func(s string) (time.Time, error) {
+	return time.Parse(time.DateOnly, s)
+}))
 ```
 
 ### JSON bodies
