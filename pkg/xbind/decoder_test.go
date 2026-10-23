@@ -1633,6 +1633,7 @@ func Test_Decoder_Decode(t *testing.T) {
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Len(t, 0, dst.List)
+		assert.Equal(t, 0, cap(dst.List))
 	})
 
 	t.Run("error - alias value error kept over required", func(t *testing.T) {

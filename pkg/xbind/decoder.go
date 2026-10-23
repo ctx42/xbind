@@ -529,6 +529,7 @@ func (dec *Decoder) apply(
 			dst.SetZero()
 		}
 		size := dst.Len()
+		var prev reflect.Value // The slice before it grew.
 		if dst.Kind() == reflect.Slice && size <= stp.pos {
 			add := stp.pos + 1 - size
 			if add > stt.budget {
@@ -536,18 +537,20 @@ func (dec *Decoder) apply(
 				code := xrr.WithCode(ECInvValue)
 				return xrr.Newf(format, ErrInvValue, stp.pos, code)
 			}
+			prev = reflect.New(dst.Type()).Elem()
+			prev.Set(dst)
 			stt.budget -= add
 			dst.Grow(add)
 			dst.SetLen(stp.pos + 1)
 		}
 		elem := dst.Index(stp.pos)
 		err := dec.apply(elem, steps[1:], vls, stt, pth+stp.name)
-		if err != nil && dst.Len() > size {
+		if err != nil && prev.IsValid() {
 			for i := size; i < dst.Len(); i++ {
 				dst.Index(i).SetZero()
 			}
 			stt.budget += dst.Len() - size
-			dst.SetLen(size)
+			dst.Set(prev) // The capacity it grew is dropped too.
 		}
 		return err
 	}
