@@ -486,11 +486,10 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	if efn := reg.lookup(key.Type()); efn != nil {
 		return efn(key)
 	}
-	if key.Kind() != reflect.Pointer {
-		ptr := addressable(key).Addr()
-		if ptr.Type().Implements(iTextMarshaler) {
-			key = ptr
-		}
+	if key.Kind() != reflect.Pointer &&
+		reflect.PointerTo(key.Type()).Implements(iTextMarshaler) {
+
+		key = addressable(key).Addr()
 	}
 	typ := key.Type()
 	if typ.Implements(iTextMarshaler) {
