@@ -1665,6 +1665,47 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - aliases of one field", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			Name string            `url:"name"`
+			Attr map[string]string `url:"attr"`
+		}{}
+		src := url.Values{
+			"name": {"a"}, "[name]": {"b"},
+			"attr.k": {"c"}, "attr[k]": {"d"},
+		}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"attr[k]: invalid value: another key sets the value " +
+			"(ECInvValue); " +
+			"name: invalid value: another key sets the value (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, "b", dst.Name)
+		assert.Equal(t, map[string]string{"k": "c"}, dst.Attr)
+	})
+
+	t.Run("error - values and indexes of one slice", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			SS []string `url:"ss"`
+		}{}
+		src := url.Values{"ss": {"a", "b"}, "ss[1]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "ss[1]: invalid value: another key sets the value " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, []string{"a", "b"}, dst.SS)
+	})
+
 	t.Run("index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2328,6 +2369,10 @@ func Test_newState(t *testing.T) {
 	assert.Len(t, 0, have.entries)
 	assert.NotNil(t, have.failed)
 	assert.Len(t, 0, have.failed)
+	assert.NotNil(t, have.set)
+	assert.Len(t, 0, have.set)
+	assert.NotNil(t, have.indexed)
+	assert.Len(t, 0, have.indexed)
 }
 
 func Test_state_markReset(t *testing.T) {
@@ -2452,6 +2497,15 @@ func Test_Decoder_apply(t *testing.T) {
 		assert.ErrorIs(t, ErrInvValue, err)
 		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
 	})
+}
+
+func Test_keyConflict(t *testing.T) {
+	// --- When ---
+	err := keyConflict()
+
+	// --- Then ---
+	assert.ErrorEqual(t, "invalid value: another key sets the value", err)
+	assert.ErrorIs(t, ErrInvValue, err)
 }
 
 func Test_Decoder_isLeafType_tabular(t *testing.T) {

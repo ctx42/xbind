@@ -7,9 +7,11 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -105,19 +107,22 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // a key with a value error adds no slice element or map entry. The first key
 // reaching a slice or an array replaces it: the values of one key replace the
 // elements, indexed keys fill a new slice whose gaps are zero values, and array
-// elements no key sets are zeroed; a field with no key keeps its value. Keys
-// are added to an existing map, and the values of a map are updated in place;
-// keys decoding to equal values name one entry, and a NaN key is an
-// [ErrInvValue] field error. A nil pointer to a nested struct is allocated only
-// when a src key leads into it. A field with the "required" option is an
-// [ErrRequired] error when it is empty after decoding: a zero number, an empty
-// string, slice or map, a nil pointer, or a zero struct; a bool is never empty.
-// The required fields of a nil struct pointer, an absent struct, are not
-// checked; those of the structs in maps, slices and arrays are, under paths
-// like "items[k].name". A src key leading into an embedded nil pointer to a
-// struct, which the decoder cannot allocate because the field is unexported, is
-// an [ErrUnexported] field error. A struct tag of dst that does not parse is an
-// [ErrInvTag] error. Pointers to pointers to structs are not supported.
+// elements no key sets are zeroed; a field with no key keeps its value. The src
+// keys are applied in sorted order; a key reaching a value another key sets, or
+// one key setting the values of a slice or array other keys index, is an
+// [ErrInvValue] field error on the later key. Keys are added to an existing
+// map, and the values of a map are updated in place; keys decoding to equal
+// values name one entry, and a NaN key is an [ErrInvValue] field error. A nil
+// pointer to a nested struct is allocated only when a src key leads into it. A
+// field with the "required" option is an [ErrRequired] error when it is empty
+// after decoding: a zero number, an empty string, slice or map, a nil pointer,
+// or a zero struct; a bool is never empty. The required fields of a nil struct
+// pointer, an absent struct, are not checked; those of the structs in maps,
+// slices and arrays are, under paths like "items[k].name". A src key leading
+// into an embedded nil pointer to a struct, which the decoder cannot allocate
+// because the field is unexported, is an [ErrUnexported] field error. A struct
+// tag of dst that does not parse is an [ErrInvTag] error. Pointers to pointers
+// to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -164,7 +169,8 @@ func (dec *Decoder) decode(
 	}
 
 	stt := newState()
-	for key, vls := range src {
+	for _, key := range slices.Sorted(maps.Keys(src)) {
+		vls := src[key]
 		segs, ok := parseKey(key)
 		var steps []step
 		var err error
@@ -367,6 +373,8 @@ type state struct {
 	log     []string            // The paths in reset, in the order set.
 	entries map[string]mapEntry // Map entries reached, by entry identity.
 	failed  map[string]bool     // Canonical paths of the values that failed.
+	set     map[string]bool     // Canonical paths of the values src keys set.
+	indexed map[string]bool     // Canonical paths of the indexed containers.
 }
 
 // mapEntry is a map entry src keys reach.
@@ -381,6 +389,8 @@ func newState() *state {
 		reset:   make(map[string]bool),
 		entries: make(map[string]mapEntry),
 		failed:  make(map[string]bool),
+		set:     make(map[string]bool),
+		indexed: make(map[string]bool),
 	}
 }
 
@@ -425,7 +435,9 @@ func (stt *state) undo(n int) {
 // Decode call resets it; stt holds the canonical paths reset so far, and pth
 // is the canonical path of dst. A key whose value fails writes no map entry
 // and adds no slice elements, and the resets it made in a map entry are
-// forgotten.
+// forgotten. A key setting a value another key set, or setting the values of
+// a slice or array other keys index, or the other way round, returns an
+// error wrapping [ErrInvValue].
 func (dec *Decoder) apply(
 	dst reflect.Value,
 	steps []step,
@@ -435,6 +447,10 @@ func (dec *Decoder) apply(
 ) error {
 
 	if len(steps) == 0 {
+		if stt.set[pth] || stt.indexed[pth] {
+			return keyConflict()
+		}
+		stt.set[pth] = true
 		stt.markReset(pth)
 		ok, err := setDst(dst, dec.reg, vls...)
 		if !ok {
@@ -494,6 +510,10 @@ func (dec *Decoder) apply(
 		return nil
 
 	default:
+		if stt.set[pth] {
+			return keyConflict()
+		}
+		stt.indexed[pth] = true
 		if !stt.reset[pth] {
 			stt.markReset(pth)
 			dst.SetZero()
@@ -513,6 +533,13 @@ func (dec *Decoder) apply(
 		}
 		return err
 	}
+}
+
+// keyConflict returns the error of a src key reaching a value another src
+// key sets.
+func keyConflict() error {
+	const format = "%w: another key sets the value"
+	return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 }
 
 // isLeafType returns true if a value of the typ type, which is not a
