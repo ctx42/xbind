@@ -58,10 +58,12 @@ func UnmarshalJSONBody(req *http.Request, dst any) error {
 	return UnmarshalJSONReader(req.Body, dst)
 }
 
-// HUE handles low-level JSON unmarshal errors. It returns the error
-// [MaybeHUE] translates err to, and a [json.InvalidUnmarshalError] (a nil or
-// non-pointer destination, a programming error) as it is; any other error is
-// enveloped with [ErrBind]. It returns nil when err is nil.
+// HUE handles low-level JSON unmarshal errors. It returns the error [MaybeHUE]
+// translates err to, and a [json.InvalidUnmarshalError] (a nil or non-pointer
+// destination, a programming error) as it is; any other error is enveloped with
+// [ErrBind], which replaces the lead of an error that is already an
+// [xrr.Envelope], such as one an UnmarshalJSON method returns. It returns nil
+// when err is nil.
 func HUE(err error) error {
 	if err == nil {
 		return nil
