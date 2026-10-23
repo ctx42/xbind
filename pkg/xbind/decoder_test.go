@@ -2834,6 +2834,90 @@ func Test_useUnmarshal(t *testing.T) {
 		assert.True(t, have)
 		assert.Equal(t, TTextPtr(0), s.F)
 	})
+
+	t.Run("method promoted from nil embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F TPromZero }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		have, err := useUnmarshal(dst, "2000-01-02T03:04:05Z")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, have)
+		assert.Equal(t, time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC), *s.F.Time)
+	})
+
+	t.Run("error - unexported nil embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		type tTime struct{ time.Time }
+		s := &struct{ F struct{ *tTime } }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		have, err := useUnmarshal(dst, "2000-01-02T03:04:05Z")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrUnexported, err)
+		assert.True(t, have)
+		assert.Nil(t, s.F.tTime)
+	})
+}
+
+func Test_allocEmbedded(t *testing.T) {
+	t.Run("nested", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ *TPromZero }{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocEmbedded(dst, map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, time.Time{}, *s.Time)
+	})
+
+	t.Run("nil embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ TPromZero }{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocEmbedded(dst, map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, time.Time{}, *s.Time)
+	})
+
+	t.Run("embedding cycle", func(t *testing.T) {
+		// --- Given ---
+		s := &TCycle{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocEmbedded(dst, map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.NotNil(t, s.TCycle)
+		assert.Nil(t, s.TCycle.TCycle)
+	})
+
+	t.Run("error - unexported nil embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		s := &TUnexpPtr{}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocEmbedded(dst, map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrUnexported, err)
+		assert.Nil(t, s.tStr)
+	})
 }
 
 func Test_setDst(t *testing.T) {

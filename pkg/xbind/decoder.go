@@ -744,7 +744,8 @@ func isUnmarshal(dst reflect.Value) bool {
 
 // useUnmarshal sets dst using its [encoding.TextUnmarshaler] implementation,
 // when it has one (see isUnmarshal), and returns true. Such a dst takes
-// exactly one value. The dst must not be a pointer.
+// exactly one value. The dst must not be a pointer. The nil pointers a struct
+// dst embeds are allocated first (see allocEmbedded).
 func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	if !isUnmarshal(dst) {
 		return false, nil
@@ -753,8 +754,47 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	if err != nil {
 		return true, err
 	}
+	if dst.Kind() == reflect.Struct && hasNilEmbedded(dst, map[uintptr]bool{}) {
+		// The method may be promoted through a nil embedded pointer.
+		if err = allocEmbedded(dst, map[reflect.Type]bool{}); err != nil {
+			return true, err
+		}
+	}
 	unm, _ := dst.Addr().Interface().(encoding.TextUnmarshaler)
 	return true, unm.UnmarshalText([]byte(val))
+}
+
+// allocEmbedded allocates the nil pointers the struct dst embeds, directly or
+// through embedded structs, so the methods they promote have a receiver. The
+// seen map holds the pointer types met so far; a pointer of a type met before
+// is left as it is, so an embedding cycle ends. A nil embedded pointer that
+// cannot be set, one of an unexported type, returns [ErrUnexported].
+func allocEmbedded(dst reflect.Value, seen map[reflect.Type]bool) error {
+	for i := 0; i < dst.NumField(); i++ {
+		if !dst.Type().Field(i).Anonymous {
+			continue
+		}
+		fld := dst.Field(i)
+		if fld.Kind() == reflect.Pointer {
+			if seen[fld.Type()] {
+				continue
+			}
+			seen[fld.Type()] = true
+			if fld.IsNil() {
+				if !fld.CanSet() {
+					return ErrUnexported
+				}
+				fld.Set(reflect.New(fld.Type().Elem()))
+			}
+			fld = fld.Elem()
+		}
+		if fld.Kind() == reflect.Struct {
+			if err := allocEmbedded(fld, seen); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // setDst sets dst with the given values. It checks first if dst implements the
