@@ -163,6 +163,12 @@ func Test_checkTags_tabular(t *testing.T) {
 		Type: reflect.TypeOf(badTag(`url:n`, false)),
 		Tag:  `url:"-"`,
 	}})
+	unexported := reflect.StructOf([]reflect.StructField{{
+		Name:    "n",
+		PkgPath: "github.com/ctx42/xbind/pkg/xbind",
+		Type:    reflect.TypeFor[string](),
+		Tag:     `url:n`,
+	}})
 
 	tt := []struct {
 		testN string
@@ -173,7 +179,8 @@ func Test_checkTags_tabular(t *testing.T) {
 		{"pointer", reflect.TypeFor[*TMultiEmbedded]()},
 		{"recursive", reflect.TypeFor[TNode]()},
 		{"recursive map", reflect.TypeFor[struct{ M TRecMap }]()},
-		{"unexported field", reflect.TypeFor[TNotExpEmb]()},
+		{"unexported embedded struct", reflect.TypeFor[TNotExpEmb]()},
+		{"unexported field", unexported},
 		{"ignored field", ignored},
 	}
 
