@@ -1060,7 +1060,12 @@ func Test_Decoder_Decode(t *testing.T) {
 		dst := &struct {
 			S []string `url:"s"`
 			A [2]int   `url:"a"`
-		}{S: []string{"default"}, A: [2]int{7, 8}}
+			D []string `url:"d"`
+		}{
+			S: []string{"default"},
+			A: [2]int{7, 8},
+			D: []string{"default"},
+		}
 		src := url.Values{"s": {"x"}, "a": {"1"}}
 
 		// --- When ---
@@ -1068,8 +1073,9 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, []string{"default", "x"}, dst.S)
-		assert.Equal(t, [2]int{1, 8}, dst.A)
+		assert.Equal(t, []string{"x"}, dst.S)
+		assert.Equal(t, [2]int{1, 0}, dst.A)
+		assert.Equal(t, []string{"default"}, dst.D)
 	})
 
 	t.Run("error - path ends at a struct field", func(t *testing.T) {
@@ -2513,6 +2519,34 @@ func Test_setSliceOrArray(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, []string{"a", "b"}, s.F)
+	})
+
+	t.Run("replaces slice", func(t *testing.T) {
+		// --- Given ---
+		old := []string{"o1", "o2"}
+		s := &struct{ F []string }{F: old}
+		dst := mirror.NewStructValue(s).FieldByName("F").Value()
+
+		// --- When ---
+		err := setSliceOrArray(dst, nil, "a")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"a"}, s.F)
+		assert.Equal(t, []string{"o1", "o2"}, old)
+	})
+
+	t.Run("zeroes array elements past values", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F [3]int }{F: [3]int{7, 8, 9}}
+		dst := mirror.NewStructValue(s).FieldByName("F").Value()
+
+		// --- When ---
+		err := setSliceOrArray(dst, nil, "1")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, [3]int{1, 0, 0}, s.F)
 	})
 
 	t.Run("nil slice", func(t *testing.T) {

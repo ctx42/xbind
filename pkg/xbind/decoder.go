@@ -82,12 +82,12 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // a struct and the structs it embeds, a key names the field Go promotion
 // selects, as in [encoding/json]. A tag name with a dot never matches a key.
 // Errors of the src values are returned as [xrr.FieldErrors] keyed by the src
-// keys; the other values are still set. Decoded slice elements are appended to
-// the elements dst already has; array elements past the decoded values keep
-// their values. A nil pointer to a nested struct is allocated only when a src
-// key leads into it. A field with the "required" option is an [ErrRequired]
-// error when it is empty after decoding: a zero number, an empty string, slice
-// or map, a nil pointer, or a zero struct; a bool is never empty. The required
+// keys; the other values are still set. A key replaces the slice it sets, and
+// zeroes the array elements past its values; a field with no key keeps its
+// value. A nil pointer to a nested struct is allocated only when a src key
+// leads into it. A field with the "required" option is an [ErrRequired] error
+// when it is empty after decoding: a zero number, an empty string, slice or
+// map, a nil pointer, or a zero struct; a bool is never empty. The required
 // fields of a nil struct pointer, an absent struct, are not checked. A src key
 // leading into an embedded nil pointer to a struct, which the decoder cannot
 // allocate because the field is unexported, is an [ErrUnexported] field error.
@@ -440,15 +440,22 @@ func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
 }
 
 // setSliceOrArray expects dst to be a slice or an array. Each of the elements
-// in vls will be decoded based on the array or slice type and set. In the case
-// of a slice, the new values are appended. In the case of an array, the values
-// are set on indexes in the same order as in vls; the elements past the
-// values keep their values.
+// in vls will be decoded based on the array or slice type and set. A slice is
+// replaced by a new one holding the values. An array gets the values on
+// indexes in the same order as in vls; the elements past the values are
+// zeroed.
 func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 	et := dst.Type().Elem() // Element type.
-	if dst.Kind() == reflect.Array && dst.Len() < len(vls) {
-		const format = "%w: too many values for an array"
-		return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
+	if dst.Kind() == reflect.Array {
+		if dst.Len() < len(vls) {
+			const format = "%w: too many values for an array"
+			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
+		}
+		for i := len(vls); i < dst.Len(); i++ {
+			dst.Index(i).SetZero()
+		}
+	} else {
+		dst.Set(reflect.MakeSlice(dst.Type(), 0, len(vls)))
 	}
 
 	for i, val := range vls {
