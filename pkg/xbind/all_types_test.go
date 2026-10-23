@@ -532,6 +532,8 @@ type TFuzzDec struct {
 	PL   *TLevel           `url:"pl"`
 	Sub  *TString          `url:"sub"`
 	PT   TPoint            `url:"pt"`
+	LS   []TItem           `url:"ls"`
+	MS   map[string]TItem  `url:"ms"`
 	Next *TFuzzDec         `url:"next"`
 	Ign  string            `url:"-"`
 }
@@ -556,4 +558,6 @@ type TFuzzEnc struct {
 	P  *int64            `url:"p"`
 	PS *string           `url:"ps"`
 	PT TPoint            `url:"pt"`
+	LS []TItem           `url:"ls"`
+	MS map[string]TItem  `url:"ms"`
 }

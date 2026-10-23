@@ -1849,6 +1849,7 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 	f.Add("f", "NaN", "u", "65535", false)
 	f.Add("Ign", "x", "b", "on", false)
 	f.Add("pt", "1,2", "e", "x", false)
+	f.Add("ls[1].size", "1", "ms[a.b].name", "x", false)
 	f.Add("next.s", "x", "next.next.p", "1", false)
 
 	f.Fuzz(func(t *testing.T, k0, v0, k1, v1 string, unknown bool) {

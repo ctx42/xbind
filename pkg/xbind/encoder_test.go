@@ -1574,6 +1574,8 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 			P:  p,
 			PS: ps,
 			PT: TPoint{X: int(i64), Y: int(u64)},
+			LS: []TItem{{Size: int(i64), Name: str}, {Name: mv}},
+			MS: map[string]TItem{mk: {Size: int(u64), Name: mv}},
 		}
 
 		// --- When ---
