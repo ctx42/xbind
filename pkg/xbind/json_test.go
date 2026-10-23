@@ -624,6 +624,20 @@ func Test_MaybeHUE(t *testing.T) {
 		assert.True(t, have)
 	})
 
+	t.Run("unknown field named like a time error", func(t *testing.T) {
+		// --- Given ---
+		e := errors.New(`json: unknown field "Time.UnmarshalJSON"`)
+
+		// --- When ---
+		have, err := MaybeHUE(e)
+
+		// --- Then ---
+		assert.True(t, have)
+		assert.ErrorIs(t, ErrBind, err)
+		assert.False(t, errors.Is(err, ErrTimeFormat))
+		assert.ErrorEqual(t, `json: unknown field "Time.UnmarshalJSON"`, err)
+	})
+
 	t.Run("UnmarshalTypeError without type", func(t *testing.T) {
 		// --- Given ---
 		ute := &json.UnmarshalTypeError{Value: "x"}

@@ -111,14 +111,15 @@ func MaybeHUE(err error) (bool, error) {
 		return true, xrr.Envelop(ErrTimeFormat, ErrBind)
 	}
 
+	// Before the time check: the field name may hold its text.
+	if strings.HasPrefix(err.Error(), "json: unknown field ") {
+		return true, xrr.Envelop(err, ErrBind)
+	}
+
 	// Since Go 1.20 time.Time.UnmarshalJSON returns errors other than
 	// *time.ParseError for some invalid inputs.
 	if strings.Contains(err.Error(), "Time.UnmarshalJSON") {
 		return true, xrr.Envelop(ErrTimeFormat, ErrBind)
-	}
-
-	if strings.HasPrefix(err.Error(), "json: unknown field ") {
-		return true, xrr.Envelop(err, ErrBind)
 	}
 
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
