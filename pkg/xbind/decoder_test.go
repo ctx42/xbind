@@ -1485,6 +1485,22 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 0, dst.M)
 	})
 
+	t.Run("error - map key holding NaN", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[[1]float64]TItem `url:"m"`
+		}{}
+		src := url.Values{"m[NaN].size": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "m[NaN].size: invalid value: NaN map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 0, dst.M)
+	})
+
 	t.Run("error - negative zero map key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {

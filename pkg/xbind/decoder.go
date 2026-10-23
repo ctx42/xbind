@@ -114,18 +114,18 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // another key sets, or one key setting the values of a slice or array other
 // keys index, is an [ErrInvValue] field error on the later key. Keys are added
 // to an existing map, and the values of a map are updated in place; keys
-// decoding to equal values name one entry, and a NaN key is an [ErrInvValue]
-// field error. A nil pointer to a nested struct is allocated only when a src
-// key leads into it. A field with the "required" option is an [ErrRequired]
-// error when it is empty after decoding: a zero number, an empty string, slice
-// or map, a nil pointer, or a zero struct; a bool is never empty. The required
-// fields of a nil struct pointer, an absent struct, are not checked; those of
-// the structs in maps, slices and arrays are, under paths like "items[k].name".
-// A src key leading into an embedded nil pointer to a struct, which the decoder
-// cannot allocate because the field is unexported, is an [ErrUnexported] field
-// error. A struct tag of dst that does not parse, or that names a field with a
-// bracket ("ids[]"), is an [ErrInvTag] error. Pointers to pointers to structs
-// are not supported.
+// decoding to equal values name one entry, and a key that is or holds a NaN is
+// an [ErrInvValue] field error. A nil pointer to a nested struct is allocated
+// only when a src key leads into it. A field with the "required" option is an
+// [ErrRequired] error when it is empty after decoding: a zero number, an empty
+// string, slice or map, a nil pointer, or a zero struct; a bool is never empty.
+// The required fields of a nil struct pointer, an absent struct, are not
+// checked; those of the structs in maps, slices and arrays are, under paths
+// like "items[k].name". A src key leading into an embedded nil pointer to a
+// struct, which the decoder cannot allocate because the field is unexported, is
+// an [ErrUnexported] field error. A struct tag of dst that does not parse, or
+// that names a field with a bracket ("ids[]"), is an [ErrInvTag] error.
+// Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -522,8 +522,9 @@ func (dec *Decoder) apply(
 		if err != nil {
 			return err
 		}
-		if isNaN(key) {
-			// No lookup finds a NaN key, so its entry cannot be read back.
+		if isNaN(key) || key.Kind() != reflect.Pointer && !key.Equal(key) {
+			// No lookup finds a key holding a NaN, so its entry cannot be
+			// read back.
 			const format = "%w: NaN map key"
 			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 		}
