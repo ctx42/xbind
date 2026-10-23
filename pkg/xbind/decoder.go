@@ -79,10 +79,6 @@ type Decoder struct {
 	reg          decReg // Decoders registered with WithDecFunc.
 }
 
-// DefaultMaxIndex is the largest slice or array index a src key may use
-// unless [WithDecMaxIndex] sets another limit.
-const DefaultMaxIndex = 1000
-
 // NewDecoder returns a new instance of [Decoder] reading the "url" struct tag
 // and rejecting unknown keys unless the options say otherwise.
 func NewDecoder(opts ...DecoderOption) *Decoder {
