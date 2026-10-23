@@ -440,6 +440,26 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, "2", dst.A)
 	})
 
+	t.Run("error - ambiguous fields with an ignored one", func(t *testing.T) {
+		// --- Given ---
+		type ign struct {
+			x int `url:"-"`
+		}
+		dst := &struct {
+			TAmbA
+			TAmbB
+			ign
+		}{ign: ign{x: 1}}
+		src := url.Values{"x": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "x: invalid field path (ECUnkFieldPath)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("tagged field wins at the same depth", func(t *testing.T) {
 		// --- Given ---
 		dst := &TTagged{}

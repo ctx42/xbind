@@ -238,12 +238,12 @@ type level struct {
 }
 
 // newLevel returns the level of the typ struct for the key struct tag. A key
-// names the field Go promotion selects, as [encoding/json] does: the
-// shallowest field with that name or, among equally shallow ones, the only
-// one whose struct tag names it; when there is no such field, the key names
-// none. Ignored and unexported fields name no key, embedded interfaces are
-// skipped and embedded structs walked; the names of ignored fields that no
-// other field takes are recorded as ignored keys. A struct type met at a
+// names the field Go promotion selects, as [encoding/json] does: the shallowest
+// field with that name or, among equally shallow ones, the only one whose
+// struct tag names it; when there is no such field, the key names none. Ignored
+// and unexported fields name no key, embedded interfaces are skipped and
+// embedded structs walked; the names of ignored fields that no other field
+// takes or shares are recorded as ignored keys. A struct type met at a
 // shallower depth is not walked again, so a recursive type ends.
 func newLevel(typ reflect.Type, key string) level {
 	type node struct {
@@ -323,8 +323,8 @@ func newLevel(typ reflect.Type, key string) level {
 			}
 		}
 	}
-	for name := range vis {
-		delete(ign, name)
+	for name := range done {
+		delete(ign, name) // A key some field takes, or several fields share.
 	}
 	return level{vis: vis, ign: ign}
 }
