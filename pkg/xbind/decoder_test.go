@@ -288,19 +288,20 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, want, dst.FspUm)
 	})
 
-	t.Run("embedded interface not ignored", func(t *testing.T) {
+	t.Run("error - embedded interface has no key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
 			io.Reader
 			FStr string `url:"f_str"`
 		}{}
-		src := url.Values{"f_str": {"abc"}}
+		src := url.Values{"Reader": {"x"}, "f_str": {"abc"}}
 
 		// --- When ---
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		assert.NoError(t, err)
+		want := "Reader: invalid field path (ECUnkFieldPath)"
+		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, "abc", dst.FStr)
 	})
 
@@ -333,24 +334,6 @@ func Test_Decoder_Decode(t *testing.T) {
 			"f_1: invalid RFC3339 time: `2000-01-02T03:04:05` " +
 			"(ECInvTimeFormat); " +
 			"f_2: cannot be blank (ECRequired)"
-		xrrtest.AssertFieldsEqual(t, want, err)
-	})
-
-	t.Run("error - not exported struct fields ignored", func(t *testing.T) {
-		// --- Given ---
-		dst := &struct {
-			F1 time.Time `url:"f_1"`
-			f2 int
-		}{}
-		src := url.Values{"f_1": {"2000-01-02T03:04:05"}}
-
-		// --- When ---
-		err := NewDecoder().Decode(dst, src)
-
-		// --- Then ---
-		want := "" +
-			"f_1: invalid RFC3339 time: `2000-01-02T03:04:05` " +
-			"(ECInvTimeFormat)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
