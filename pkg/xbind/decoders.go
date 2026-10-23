@@ -318,12 +318,8 @@ func decString(vls ...string) (any, error) {
 func single(vls []string) (string, error) {
 	if len(vls) != 1 {
 		const format = "%w: received %d"
-		return "", xrr.Newf(
-			format,
-			ErrReqSingleValue,
-			len(vls),
-			xrr.WithCode(ECReqSingle),
-		)
+		code := xrr.WithCode(ECReqSingle)
+		return "", xrr.Newf(format, ErrReqSingleValue, len(vls), code)
 	}
 	return vls[0], nil
 }
