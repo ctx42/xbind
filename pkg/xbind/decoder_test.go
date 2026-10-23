@@ -2236,16 +2236,16 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 
 		// A decoded value is stable: it encodes to keys which decode to the
 		// same value.
-		pnt := NewEncoder(WithEncFunc(encPoint))
-		enc := url.Values{}
-		assert.NoError(t, pnt.Encode(enc, dst))
+		enc := NewEncoder(WithEncFunc(encPoint))
+		vls := url.Values{}
+		assert.NoError(t, enc.Encode(vls, dst))
 
 		again := &TFuzzDec{}
-		assert.NoError(t, NewDecoder(WithDecFunc(decPoint)).Decode(again, enc))
+		assert.NoError(t, NewDecoder(WithDecFunc(decPoint)).Decode(again, vls))
 
 		have := url.Values{}
-		assert.NoError(t, pnt.Encode(have, again))
-		assert.Equal(t, enc, have)
+		assert.NoError(t, enc.Encode(have, again))
+		assert.Equal(t, vls, have)
 	})
 }
 
