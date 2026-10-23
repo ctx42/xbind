@@ -128,8 +128,8 @@ for _, field := range xrr.FieldNames(err) {
 ```
 
 Unknown keys are errors unless the decoder is built with
-`NewDecoder(xbind.WithDecAllowUnknown)`. `EncloseError` puts the field errors
-under the `ErrBind` lead error for an API response.
+`NewDecoder(xbind.WithDecAllowUnknown)`. `xrr.Envelop(err, xbind.ErrBind)`
+puts the field errors under the `ErrBind` lead error for an API response.
 
 ### Encoding values
 

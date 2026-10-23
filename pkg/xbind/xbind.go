@@ -30,8 +30,8 @@
 //
 // Errors are [xrr] errors with codes; errors returned by marshalers and
 // unmarshalers pass through. Decoding problems of individual values come
-// back as [xrr.FieldErrors] keyed by the source key; use [EncloseError] to
-// put them under the [ErrBind] lead error.
+// back as [xrr.FieldErrors] keyed by the source key; pass them to
+// [xrr.Envelop] with [ErrBind] as the lead error for an API response.
 package xbind
 
 import (
@@ -146,12 +146,3 @@ var (
 	// ErrEncNotFound represents a type the [Encoder] cannot encode.
 	ErrEncNotFound = xrr.New("encoder not found", ECEncNotFound)
 )
-
-// EncloseError envelops err with [xrr.Envelop] using [ErrBind] as the lead
-// error. It returns nil if err is nil.
-func EncloseError(err error) error {
-	if err == nil {
-		return nil
-	}
-	return xrr.Envelop(err, ErrBind)
-}
