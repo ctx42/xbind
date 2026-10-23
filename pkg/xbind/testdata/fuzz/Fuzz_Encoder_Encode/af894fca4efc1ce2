@@ -1,0 +1,13 @@
+go test fuzz v1
+string("0")
+int64(9223372036854775807)
+uint64(0)
+float64(NaN)
+bool(true)
+int64(9223372036854775807)
+int64(253402300896)
+int64(31)
+int(1439)
+int(81)
+string("0")
+string("0")
