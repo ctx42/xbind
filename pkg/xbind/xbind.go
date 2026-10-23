@@ -213,8 +213,8 @@ func checkTags(
 			const format = "%w: %s: bracket in name"
 			return xrr.Newf(format, ErrInvTag, pth, xrr.WithCode(ECInvTag))
 		}
-		typ := baseType(fld.Type())
-		if tag.IsIgnored() || typ.Kind() != reflect.Struct {
+		base := baseType(fld.Type())
+		if tag.IsIgnored() || base.Kind() != reflect.Struct {
 			continue
 		}
 		raw := fld.StructField().Tag.Get(key)
@@ -225,7 +225,7 @@ func checkTags(
 			const format = "%w: %s: name on embedded struct"
 			return xrr.Newf(format, ErrInvTag, pth, xrr.WithCode(ECInvTag))
 		}
-		if err = checkTags(pth, typ, key, seen); err != nil {
+		if err = checkTags(pth, base, key, seen); err != nil {
 			return err
 		}
 	}
@@ -304,8 +304,8 @@ func newLevel(typ reflect.Type, key string) level {
 				cands[name] = append(cands[name], cand{idx, tagged})
 			}
 		}
-		for typ := range walked {
-			seen[typ] = true
+		for wtp := range walked {
+			seen[wtp] = true
 		}
 		for name, cds := range cands {
 			if done[name] {
