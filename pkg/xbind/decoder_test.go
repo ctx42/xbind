@@ -3207,8 +3207,8 @@ func Test_Decoder_required_tabular(t *testing.T) {
 			"required embedded struct",
 			&struct {
 				TRequired `url:",required"`
-			}{TRequired{FStr: "a"}},
-			nil,
+			}{},
+			[]string{"f_str"},
 		},
 	}
 
