@@ -7,6 +7,7 @@ import (
 	"encoding"
 	"errors"
 	"fmt"
+	"math"
 	"net/url"
 	"reflect"
 	"strconv"
@@ -342,7 +343,8 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 		return 0, ErrUnkFieldPath
 	}
 	pos, err := strconv.Atoi(txt)
-	if err != nil || pos > dec.indexLimit() {
+	// No slice holds the largest int index, and the length past it overflows.
+	if err != nil || pos > dec.indexLimit() || pos == math.MaxInt {
 		const format = "%w: index %s over the limit %d"
 		code := xrr.WithCode(ECInvValue)
 		return 0, xrr.Newf(format, ErrInvValue, txt, dec.indexLimit(), code)

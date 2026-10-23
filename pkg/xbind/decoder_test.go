@@ -6,6 +6,7 @@ package xbind
 import (
 	"encoding"
 	"io"
+	"math"
 	"net/url"
 	"reflect"
 	"slices"
@@ -2113,6 +2114,22 @@ func Test_Decoder_plan(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
 		assert.Nil(t, have)
+	})
+}
+
+func Test_Decoder_index(t *testing.T) {
+	t.Run("error - largest int", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecMaxIndex(math.MaxInt))
+		txt := strconv.Itoa(math.MaxInt)
+
+		// --- When ---
+		have, err := dec.index(reflect.TypeFor[[]int](), txt)
+
+		// --- Then ---
+		want := "invalid value: index " + txt + " over the limit " + txt
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
 	})
 }
 
