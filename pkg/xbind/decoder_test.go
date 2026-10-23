@@ -1476,6 +1476,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("nil from an interface decoder", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(string) (fmt.Stringer, error) {
+			return nil, nil
+		}))
+		dst := &struct {
+			S fmt.Stringer `url:"s"`
+		}{S: time.Second}
+		src := url.Values{"s": {"x"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Nil(t, dst.S)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- Given ---
 		src := url.Values{}

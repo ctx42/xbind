@@ -55,7 +55,8 @@ func WithDecMaxIndex(n int) DecoderOption {
 // [encoding.TextUnmarshaler] method of T and the decoders the package
 // provides, [time.Time] and [time.Duration] included. For a pointer T, fn
 // decodes the type T points to, and a nil pointer it returns is an
-// [ErrInvValue] error.
+// [ErrInvValue] error. For an interface T, fn may return nil, which sets a
+// nil interface.
 func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 	typ := reflect.TypeFor[T]()
 	isPtr := typ.Kind() == reflect.Pointer
@@ -884,6 +885,10 @@ func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
 			return true, err
 		}
 		vv := reflect.ValueOf(val)
+		if !vv.IsValid() && typ.Kind() == reflect.Interface {
+			dst.SetZero() // The decoder returned a nil interface.
+			return true, nil
+		}
 		if !vv.IsValid() || !vv.CanConvert(typ) {
 			// This may happen only if decoder returns type which is in
 			// fact not the one it should be decoding.
