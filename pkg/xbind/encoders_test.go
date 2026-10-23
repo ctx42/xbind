@@ -42,7 +42,7 @@ func Test_encFor(t *testing.T) {
 		// --- Then ---
 		assert.NotNil(t, have)
 
-		assert.Equal(t, "null", must.Value(have(reflect.ValueOf((*s)(nil)))))
+		assert.Equal(t, "called", must.Value(have(reflect.ValueOf(&s{}))))
 	})
 
 	t.Run("value of registered pointer", func(t *testing.T) {

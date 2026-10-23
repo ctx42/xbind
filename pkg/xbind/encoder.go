@@ -52,7 +52,10 @@ func NewEncoder(opts ...func(*Encoder)) *Encoder {
 // struct field is the dotted list of names leading to it. A [Marshaler]
 // implemented by src, or by a struct embedded in it, encodes the whole struct;
 // an [encoding.TextMarshaler] implemented by src adds its text under the
-// empty key and the fields are not encoded. A pointer to a struct already
+// empty key and the fields are not encoded. A nil pointer or interface adds
+// nothing: a nil field has no key, a map entry with a nil key or value is
+// left out, and a nil slice or array element has no value, so the elements
+// after it move up one place when decoded. A pointer to a struct already
 // being encoded, a pointer cycle, is an [ErrCycle] error keyed by the field
 // path of the repeated pointer.
 // On error, dst keeps the values encoded before the error, which may include
@@ -184,8 +187,7 @@ type ptrKey struct {
 //
 // It first checks if src, or its address, implements [Marshaler], then
 // [encoding.TextMarshaler]; lastly, it calls encFor to find an encoder. A nil
-// pointer or interface implementing one of the interfaces is encoded as
-// "null".
+// pointer or interface with an encoder adds nothing to dst and returns true.
 func encSrc(
 	dst url.Values,
 	prefix string,
@@ -215,7 +217,6 @@ func encSrc(
 	// The methods of a value read from an unexported field cannot be called.
 	if isMarshaler(typ) && src.CanInterface() {
 		if isNil(src) {
-			dst[prefix] = append(dst[prefix], "null")
 			return true, nil
 		}
 		if m, ok := src.Interface().(Marshaler); ok {
@@ -231,6 +232,9 @@ func encSrc(
 	}
 
 	if efn := encFor(typ, reg); efn != nil {
+		if isNil(src) {
+			return true, nil
+		}
 		v, err := efn(src)
 		if err != nil {
 			return true, err
@@ -279,7 +283,11 @@ func encMap(
 ) error {
 
 	for it := src.MapRange(); it.Next(); {
-		key, err := encMapKey(it.Key(), reg)
+		mk := it.Key()
+		if isNil(mk) || mk.Kind() == reflect.Interface && isNil(mk.Elem()) {
+			continue // A nil key adds nothing.
+		}
+		key, err := encMapKey(mk, reg)
 		if err != nil {
 			return fieldError(prefix, err)
 		}
@@ -309,9 +317,10 @@ func encMap(
 	return nil
 }
 
-// encMapKey encodes the map key to a string.
+// encMapKey encodes the map key to a string. The key must not be nil or an
+// interface holding a nil pointer.
 func encMapKey(key reflect.Value, reg encReg) (string, error) {
-	if key.Kind() == reflect.Interface && !key.IsNil() {
+	if key.Kind() == reflect.Interface {
 		key = key.Elem()
 	}
 	if key.Kind() != reflect.Pointer {
@@ -322,9 +331,6 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	}
 	typ := key.Type()
 	if typ.Implements(iTextMarshaler) {
-		if isNil(key) {
-			return "null", nil
-		}
 		m := key.Interface().(encoding.TextMarshaler) //nolint:forcetypeassert
 		text, err := m.MarshalText()
 		return string(text), err

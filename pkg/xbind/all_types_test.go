@@ -434,8 +434,7 @@ type TFuzzDec struct {
 	Ign  string            `url:"-"`
 }
 
-// TFuzzEnc is the source of the encoder fuzz test. It has no pointer fields:
-// a nil pointer encodes as "null", which does not decode back to nil.
+// TFuzzEnc is the source of the encoder fuzz test.
 type TFuzzEnc struct {
 	S  string            `url:"s"`
 	I  int64             `url:"i"`

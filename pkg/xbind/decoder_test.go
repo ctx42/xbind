@@ -1344,14 +1344,12 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 		// same value.
 		enc := url.Values{}
 		assert.NoError(t, NewEncoder().Encode(enc, dst))
-		dropNullPtrs(enc)
 
 		again := &TFuzzDec{}
 		assert.NoError(t, NewDecoder().Decode(again, enc))
 
 		have := url.Values{}
 		assert.NoError(t, NewEncoder().Encode(have, again))
-		dropNullPtrs(have)
 		assert.Equal(t, enc, have)
 	})
 }

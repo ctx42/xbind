@@ -140,13 +140,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"f_a_p_str=null&" +
-			"f_a_p_str=null&" +
-			"f_a_str=&" +
-			"f_a_str=&" +
-			"f_p_str=null&" +
-			"f_str="
+		want := "f_a_str=&f_a_str=&f_str="
 		assert.Equal(t, want, dst.Encode())
 	})
 
@@ -352,13 +346,10 @@ func Test_Encoder_Encode(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		want := "" +
-			"f_a_p_str=null&" +
-			"f_a_p_str=null&" +
 			"f_a_str=&" +
 			"f_a_str=&" +
 			"f_flt_alias=0&" +
 			"f_int_alias=1&" +
-			"f_p_str=null&" +
 			"f_s_int_alias=1&" +
 			"f_s_int_alias=0&" +
 			"f_s_str=a&" +
@@ -485,7 +476,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "FMar=null&FStr=abc", dst.Encode())
+		assert.Equal(t, "FStr=abc", dst.Encode())
 	})
 
 	t.Run("struct with time field", func(t *testing.T) {
@@ -718,7 +709,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "M=null&T=null", dst.Encode())
+		assert.Empty(t, dst)
 	})
 
 	t.Run("embedded struct skipped", func(t *testing.T) {
@@ -995,8 +986,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := url.Values{"M": {"null"}, "T": {"null"}, "MS": {"null"}}
-		assert.Equal(t, want, dst)
+		assert.Empty(t, dst)
 	})
 
 	t.Run("nil embedded colliding marshaler pointers", func(t *testing.T) {
@@ -1097,7 +1087,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, url.Values{"M.null": {"x"}}, dst)
+		assert.Empty(t, dst)
 	})
 
 	t.Run("pointer to pointer to TextMarshaler", func(t *testing.T) {
@@ -1114,7 +1104,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, url.Values{"pp": {"L7"}, "np": {"null"}}, dst)
+		assert.Equal(t, url.Values{"pp": {"L7"}}, dst)
 	})
 
 	t.Run("omitempty with IsZero promoted from deep nil", func(t *testing.T) {
@@ -1146,6 +1136,24 @@ func Test_Encoder_Encode(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, url.Values{"M.NaN": {"x"}}, dst)
+	})
+
+	t.Run("nil pointers", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			P  *int           `url:"p"`
+			PL *TLevel        `url:"pl"`
+			S  []*int         `url:"s"`
+			M  map[string]int `url:"m"`
+		}{S: []*int{new(1), nil, new(2)}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"s": {"1", "2"}}, dst)
 	})
 
 	t.Run("embedded interface is skipped", func(t *testing.T) {
@@ -1511,8 +1519,8 @@ func Test_encSrc_tabular(t *testing.T) {
 			"F",
 			"F.f_str=mar_abc",
 		},
-		{"nil TextMarshaler", &struct{ F *TTextVal }{}, "F", "F=null"},
-		{"nil Marshaler", &struct{ F *TMarValVal }{}, "F", "F=null"},
+		{"nil TextMarshaler", &struct{ F *TTextVal }{}, "F", ""},
+		{"nil Marshaler", &struct{ F *TMarValVal }{}, "F", ""},
 	}
 
 	for _, tc := range tt {
@@ -1699,6 +1707,34 @@ func Test_encSliceOrArray_tabular(t *testing.T) {
 }
 
 func Test_encMap(t *testing.T) {
+	t.Run("nil key and nil value", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		lvl := TLevel(1)
+		src := reflect.ValueOf(map[*TLevel]*int{nil: new(1), &lvl: nil})
+
+		// --- When ---
+		err := encMap(dst, "M", src, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Empty(t, dst)
+	})
+
+	t.Run("nil pointer in interface key", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		key := encoding.TextMarshaler((*TTextPtr)(nil))
+		src := reflect.ValueOf(map[encoding.TextMarshaler]int{key: 1})
+
+		// --- When ---
+		err := encMap(dst, "M", src, nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Empty(t, dst)
+	})
+
 	t.Run("custom key encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
@@ -1952,13 +1988,17 @@ func Test_encMapKey(t *testing.T) {
 		assert.Equal(t, "A", have)
 	})
 
-	t.Run("nil pointer TextMarshaler", func(t *testing.T) {
+	t.Run("TextMarshaler in interface", func(t *testing.T) {
+		// --- Given ---
+		m := map[encoding.TextMarshaler]int{TTextVal('A'): 1}
+		key := reflect.ValueOf(m).MapKeys()[0]
+
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf((*TTextPtr)(nil)), nil)
+		have, err := encMapKey(key, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "null", have)
+		assert.Equal(t, "A", have)
 	})
 
 	t.Run("error - MarshalText", func(t *testing.T) {

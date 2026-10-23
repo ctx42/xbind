@@ -16,7 +16,8 @@ type encFn func(reflect.Value) (string, error)
 type encReg map[reflect.Type]encFn
 
 // encFor returns the encoder function for the base type represented by typ,
-// looking in the reg registry first, or nil if no encoder can be found.
+// looking in the reg registry first, or nil if no encoder can be found. The
+// encoder of a pointer type must not be called with a nil pointer.
 //
 //nolint:cyclop
 func encFor(typ reflect.Type, reg encReg) encFn {
@@ -51,12 +52,7 @@ func encFor(typ reflect.Type, reg encReg) encFn {
 			return nil
 		}
 
-		return func(v reflect.Value) (string, error) {
-			if v.IsNil() {
-				return "null", nil
-			}
-			return enc(v.Elem())
-		}
+		return func(v reflect.Value) (string, error) { return enc(v.Elem()) }
 
 	case reflect.String:
 		return encString

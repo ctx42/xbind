@@ -56,9 +56,9 @@ var (
 
 // Marshaler is the interface implemented by types that can marshal themselves
 // into [url.Values]. The [Encoder] does not call it on a nil pointer, a nil
-// Marshaler interface, or a Marshaler interface holding a nil pointer; it adds
-// the "null" value instead. A method promoted from a nil embedded pointer is
-// still called, with a nil receiver.
+// Marshaler interface, or a Marshaler interface holding a nil pointer; such a
+// value adds nothing. A method promoted from a nil embedded pointer is still
+// called, with a nil receiver.
 type Marshaler interface {
 	// MarshalValues adds the values of the type to dst under the prefix key,
 	// or under keys starting with the prefix. The prefix is empty for the
