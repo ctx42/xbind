@@ -100,10 +100,11 @@ field uses its Go name.
 
 Brackets may hold dots, so map keys and tag names with dots work. The decoder
 also reads `attr.color` for a map of values, taking the rest of the key as the
-map key, and `items.0.name` for an index. An index above 1000 is an error
-unless `WithDecMaxIndex` sets another limit. The first key reaching a slice
-replaces it, indexed keys fill it whatever their order, and keys are added to
-an existing map.
+map key, and `items.0.name` for an index. An index above 1000 is an error unless
+`WithDecMaxIndex` sets another limit, and the indexed keys of one request may
+add, gaps included, as many elements as that limit plus one, and one more per
+key. The first key reaching a slice replaces it, indexed keys fill it whatever
+their order, and keys are added to an existing map.
 
 When a struct and the structs it embeds have fields with the same key, the
 key names the field Go promotion selects, as in `encoding/json`: the

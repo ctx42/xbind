@@ -1706,6 +1706,26 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, []string{"a", "b"}, dst.SS)
 	})
 
+	t.Run("error - indexed keys over the element budget", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			A []struct {
+				B []int `url:"b"`
+			} `url:"a"`
+		}{}
+		src := url.Values{"a[0].b[10]": {"1"}, "a[1].b[10]": {"2"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(10)).Decode(dst, src)
+
+		// --- Then ---
+		want := "a[1].b[10]: invalid value: index 10 adds too many elements " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 1, dst.A)
+		assert.Len(t, 11, dst.A[0].B)
+	})
+
 	t.Run("index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2373,6 +2393,7 @@ func Test_newState(t *testing.T) {
 	assert.Len(t, 0, have.set)
 	assert.NotNil(t, have.indexed)
 	assert.Len(t, 0, have.indexed)
+	assert.Equal(t, math.MaxInt, have.budget)
 }
 
 func Test_state_markReset(t *testing.T) {

@@ -100,29 +100,31 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // dots, so "[page.size]" names a field tagged page.size. A map of values also
 // takes the rest of a key after a dot as its key ("attr.a.b"), and an index may
 // follow a dot ("list.0"). An index over [DefaultMaxIndex], or the limit
-// [WithDecMaxIndex] sets, is an [ErrInvValue] field error. Among the fields of
-// a struct and the structs it embeds, a key names the field Go promotion
-// selects, as in [encoding/json]. Errors of the src values are returned as
-// [xrr.FieldErrors] keyed by the src keys; the other values are still set, and
-// a key with a value error adds no slice element or map entry. The first key
-// reaching a slice or an array replaces it: the values of one key replace the
-// elements, indexed keys fill a new slice whose gaps are zero values, and array
-// elements no key sets are zeroed; a field with no key keeps its value. The src
-// keys are applied in sorted order; a key reaching a value another key sets, or
-// one key setting the values of a slice or array other keys index, is an
-// [ErrInvValue] field error on the later key. Keys are added to an existing
-// map, and the values of a map are updated in place; keys decoding to equal
-// values name one entry, and a NaN key is an [ErrInvValue] field error. A nil
-// pointer to a nested struct is allocated only when a src key leads into it. A
-// field with the "required" option is an [ErrRequired] error when it is empty
-// after decoding: a zero number, an empty string, slice or map, a nil pointer,
-// or a zero struct; a bool is never empty. The required fields of a nil struct
-// pointer, an absent struct, are not checked; those of the structs in maps,
-// slices and arrays are, under paths like "items[k].name". A src key leading
-// into an embedded nil pointer to a struct, which the decoder cannot allocate
-// because the field is unexported, is an [ErrUnexported] field error. A struct
-// tag of dst that does not parse is an [ErrInvTag] error. Pointers to pointers
-// to structs are not supported.
+// [WithDecMaxIndex] sets, is an [ErrInvValue] field error, and so is an index
+// adding more slice elements, gaps included, than the indexed keys of one call
+// may add: as many as the limit plus one, and one more per src key. Among the
+// fields of a struct and the structs it embeds, a key names the field Go
+// promotion selects, as in [encoding/json]. Errors of the src values are
+// returned as [xrr.FieldErrors] keyed by the src keys; the other values are
+// still set, and a key with a value error adds no slice element or map entry.
+// The first key reaching a slice or an array replaces it: the values of one key
+// replace the elements, indexed keys fill a new slice whose gaps are zero
+// values, and array elements no key sets are zeroed; a field with no key keeps
+// its value. The src keys are applied in sorted order; a key reaching a value
+// another key sets, or one key setting the values of a slice or array other
+// keys index, is an [ErrInvValue] field error on the later key. Keys are added
+// to an existing map, and the values of a map are updated in place; keys
+// decoding to equal values name one entry, and a NaN key is an [ErrInvValue]
+// field error. A nil pointer to a nested struct is allocated only when a src
+// key leads into it. A field with the "required" option is an [ErrRequired]
+// error when it is empty after decoding: a zero number, an empty string, slice
+// or map, a nil pointer, or a zero struct; a bool is never empty. The required
+// fields of a nil struct pointer, an absent struct, are not checked; those of
+// the structs in maps, slices and arrays are, under paths like "items[k].name".
+// A src key leading into an embedded nil pointer to a struct, which the decoder
+// cannot allocate because the field is unexported, is an [ErrUnexported] field
+// error. A struct tag of dst that does not parse is an [ErrInvTag] error.
+// Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -169,6 +171,10 @@ func (dec *Decoder) decode(
 	}
 
 	stt := newState()
+	// Indexed keys may add one full slice of elements, and one per key.
+	if lim := dec.indexLimit(); lim < math.MaxInt-len(src)-1 {
+		stt.budget = max(lim, 0) + 1 + len(src)
+	}
 	for _, key := range slices.Sorted(maps.Keys(src)) {
 		vls := src[key]
 		segs, ok := parseKey(key)
@@ -375,6 +381,7 @@ type state struct {
 	failed  map[string]bool     // Canonical paths of the values that failed.
 	set     map[string]bool     // Canonical paths of the values src keys set.
 	indexed map[string]bool     // Canonical paths of the indexed containers.
+	budget  int                 // Slice elements indexed keys may still add.
 }
 
 // mapEntry is a map entry src keys reach.
@@ -383,7 +390,7 @@ type mapEntry struct {
 	text string        // The key text in the canonical path of the entry.
 }
 
-// newState returns the state of a new Decode call.
+// newState returns the state of a new Decode call, with no element budget.
 func newState() *state {
 	return &state{
 		reset:   make(map[string]bool),
@@ -391,6 +398,7 @@ func newState() *state {
 		failed:  make(map[string]bool),
 		set:     make(map[string]bool),
 		indexed: make(map[string]bool),
+		budget:  math.MaxInt,
 	}
 }
 
@@ -520,7 +528,14 @@ func (dec *Decoder) apply(
 		}
 		size := dst.Len()
 		if dst.Kind() == reflect.Slice && size <= stp.pos {
-			dst.Grow(stp.pos + 1 - size)
+			add := stp.pos + 1 - size
+			if add > stt.budget {
+				const format = "%w: index %d adds too many elements"
+				code := xrr.WithCode(ECInvValue)
+				return xrr.Newf(format, ErrInvValue, stp.pos, code)
+			}
+			stt.budget -= add
+			dst.Grow(add)
 			dst.SetLen(stp.pos + 1)
 		}
 		elem := dst.Index(stp.pos)
@@ -529,6 +544,7 @@ func (dec *Decoder) apply(
 			for i := size; i < dst.Len(); i++ {
 				dst.Index(i).SetZero()
 			}
+			stt.budget += dst.Len() - size
 			dst.SetLen(size)
 		}
 		return err
