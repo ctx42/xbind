@@ -2426,6 +2426,21 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		assert.Len(t, 1, dst["M[1]"])
 	})
 
+	t.Run("error - negative and positive zero keys", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		nz, z := math.Copysign(0, -1), 0.0
+		src := reflect.ValueOf(map[*float64]string{&nz: "a", &z: "b"})
+		est := newEncState()
+
+		// --- When ---
+		err := (&Encoder{}).encodeMap(dst, "M", src, est)
+
+		// --- Then ---
+		want := "M: invalid value: duplicate map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("error - first bad key in key order", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -2834,6 +2849,15 @@ func Test_encMapKey(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, "42", have)
+	})
+
+	t.Run("negative zero", func(t *testing.T) {
+		// --- When ---
+		have, err := encMapKey(reflect.ValueOf(math.Copysign(0, -1)), nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "0", have)
 	})
 
 	t.Run("TextMarshaler", func(t *testing.T) {

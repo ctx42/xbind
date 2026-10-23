@@ -541,7 +541,8 @@ func (enc *Encoder) isValueType(typ reflect.Type) bool {
 var errNilKey = errors.New("nil map key")
 
 // encMapKey encodes the map key to a string. The key must not be nil or an
-// interface holding a nil pointer. A key counting as nil returns errNilKey.
+// interface holding a nil pointer. A key counting as nil returns errNilKey. A
+// float key of -0, or a pointer to one, encodes as "0".
 func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	efn := reg.lookup(key.Type())
 	if efn == nil && key.Kind() == reflect.Interface {
@@ -564,6 +565,9 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 		m := key.Interface().(encoding.TextMarshaler) //nolint:forcetypeassert
 		text, err := m.MarshalText()
 		return string(text), err
+	}
+	if val := reflect.Indirect(key); val.CanFloat() && val.Float() == 0 {
+		return "0", nil // Decode takes a -0 key for the 0 one.
 	}
 	if efn = encFor(typ, reg); efn == nil {
 		return "", encNotFound(typ)
