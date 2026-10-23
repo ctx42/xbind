@@ -337,7 +337,8 @@ func isMarshaler(typ reflect.Type) bool {
 // encodeSlice encodes the src slice or array to dst. Elements encoded as one
 // value (see isValueType) are added as values of the prefix key; any other
 // element, a struct, a map or a [Marshaler], is encoded under the prefix key
-// and its index ("list[0]"). The seen map is passed to the encode method.
+// and its index ("list[0]"). An element of an interface type is told by the
+// value it holds. The seen map is passed to the encode method.
 func (enc *Encoder) encodeSlice(
 	dst url.Values,
 	prefix string,
@@ -346,10 +347,16 @@ func (enc *Encoder) encodeSlice(
 ) error {
 
 	value := enc.isValueType(src.Type().Elem())
+	itf := src.Type().Elem().Kind() == reflect.Interface
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
 		ipt := prefix + "[" + strconv.Itoa(i) + "]"
-		if value {
+		isVal := value
+		if value && itf && !val.IsNil() {
+			// The interface may hold a Marshaler, which is no value.
+			isVal = enc.isValueType(val.Elem().Type())
+		}
+		if isVal {
 			if ok, err := encSrc(dst, prefix, val, enc.reg, false); ok {
 				if err != nil {
 					return xrr.NewFieldError(ipt, err)

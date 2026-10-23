@@ -444,6 +444,17 @@ type (
 	TRecPtr   *TRecPtr
 )
 
+// TDual implements [encoding.TextMarshaler] and [Marshaler], which adds its
+// text under the prefix and ".v".
+type TDual string
+
+func (tdu TDual) MarshalText() ([]byte, error) { return []byte(tdu), nil }
+
+func (tdu TDual) MarshalValues(dst url.Values, prefix string) error {
+	dst.Add(prefix+".v", string(tdu))
+	return nil
+}
+
 // TItem is a struct used as an element of maps, slices and arrays.
 type TItem struct {
 	Size int    `url:"size"`

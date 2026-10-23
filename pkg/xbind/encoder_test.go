@@ -2064,6 +2064,16 @@ func Test_Encoder_encodeSlice_tabular(t *testing.T) {
 			"F",
 			"F=1&F=2",
 		},
+		{
+			"slice of interfaces holding Marshalers",
+			&struct {
+				F []encoding.TextMarshaler
+			}{
+				F: []encoding.TextMarshaler{TDual("a"), TTextVal('b')},
+			},
+			"F",
+			"F=b&F%5B0%5D.v=a",
+		},
 	}
 
 	for _, tc := range tt {
