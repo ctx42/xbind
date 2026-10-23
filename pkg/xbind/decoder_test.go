@@ -1756,7 +1756,8 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		want := "list[2].f_int: invalid value: cannot convert `x` to int " +
+		want := "" +
+			"list[2].f_int: invalid value: cannot convert `x` to int " +
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Len(t, 0, dst.List)
@@ -1843,7 +1844,8 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		want := "ss[1]: invalid value: another key sets the value " +
+		want := "" +
+			"ss[1]: invalid value: another key sets the value " +
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, []string{"a", "b"}, dst.SS)
@@ -1862,7 +1864,8 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder(WithDecMaxIndex(10)).Decode(dst, src)
 
 		// --- Then ---
-		want := "a[1].b[10]: invalid value: index 10 adds too many elements " +
+		want := "" +
+			"a[1].b[10]: invalid value: index 10 adds too many elements " +
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Len(t, 1, dst.A)
@@ -1878,7 +1881,8 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder(WithDecMaxIndex(2)).Decode(dst, src)
 
 		// --- Then ---
-		want := "list[3].size: invalid value: index 3 over the limit 2 " +
+		want := "" +
+			"list[3].size: invalid value: index 3 over the limit 2 " +
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
@@ -1892,7 +1896,8 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder(WithDecMaxIndex(0)).Decode(dst, src)
 
 		// --- Then ---
-		want := "list[1].size: invalid value: index 1 over the limit 0 " +
+		want := "" +
+			"list[1].size: invalid value: index 1 over the limit 0 " +
 			"(ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, []TItem{{Size: 1}}, dst.List)
