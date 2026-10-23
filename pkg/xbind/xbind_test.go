@@ -27,14 +27,6 @@ func Test_ErrReqStruct(t *testing.T) {
 	assert.Equal(t, "struct or struct pointer required (ECReqStruct)", have)
 }
 
-func Test_ErrNilDst(t *testing.T) {
-	// --- When ---
-	have := fmt.Sprintf("%+v", ErrNilDst)
-
-	// --- Then ---
-	assert.Equal(t, "nil destination (ECNilDst)", have)
-}
-
 func Test_ErrDecNotFound(t *testing.T) {
 	// --- When ---
 	have := fmt.Sprintf("%+v", ErrDecNotFound)
@@ -49,6 +41,14 @@ func Test_ErrEncNotFound(t *testing.T) {
 
 	// --- Then ---
 	assert.Equal(t, "encoder not found (ECEncNotFound)", have)
+}
+
+func Test_ErrNilDst(t *testing.T) {
+	// --- When ---
+	have := fmt.Sprintf("%+v", ErrNilDst)
+
+	// --- Then ---
+	assert.Equal(t, "nil destination (ECNilDst)", have)
 }
 
 func Test_checkTags(t *testing.T) {

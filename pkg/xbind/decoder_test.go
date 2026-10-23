@@ -2548,38 +2548,6 @@ func Test_newState(t *testing.T) {
 	assert.Equal(t, math.MaxInt, have.budget)
 }
 
-func Test_state_markReset(t *testing.T) {
-	t.Run("paths", func(t *testing.T) {
-		// --- Given ---
-		stt := newState()
-
-		// --- When ---
-		stt.markReset("a", reflect.Value{})
-		stt.markReset("b", reflect.Value{})
-		stt.markReset("a", reflect.Value{})
-
-		// --- Then ---
-		assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
-		assert.Len(t, 2, stt.log)
-		assert.Equal(t, "a", stt.log[0].pth)
-		assert.Equal(t, "b", stt.log[1].pth)
-	})
-
-	t.Run("zeroes the value", func(t *testing.T) {
-		// --- Given ---
-		stt := newState()
-		s := []int{1, 2}
-
-		// --- When ---
-		stt.markReset("a", reflect.ValueOf(&s).Elem())
-
-		// --- Then ---
-		assert.Nil(t, s)
-		assert.Len(t, 1, stt.log)
-		assert.Equal(t, []int{1, 2}, stt.log[0].old.Interface())
-	})
-}
-
 func Test_state_entry(t *testing.T) {
 	t.Run("equal keys name one entry", func(t *testing.T) {
 		// --- Given ---
@@ -2620,6 +2588,38 @@ func Test_state_entry(t *testing.T) {
 
 		// --- Then ---
 		assert.NotSame(t, ent.key.Interface(), have.key.Interface())
+	})
+}
+
+func Test_state_markReset(t *testing.T) {
+	t.Run("paths", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+
+		// --- When ---
+		stt.markReset("a", reflect.Value{})
+		stt.markReset("b", reflect.Value{})
+		stt.markReset("a", reflect.Value{})
+
+		// --- Then ---
+		assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
+		assert.Len(t, 2, stt.log)
+		assert.Equal(t, "a", stt.log[0].pth)
+		assert.Equal(t, "b", stt.log[1].pth)
+	})
+
+	t.Run("zeroes the value", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		s := []int{1, 2}
+
+		// --- When ---
+		stt.markReset("a", reflect.ValueOf(&s).Elem())
+
+		// --- Then ---
+		assert.Nil(t, s)
+		assert.Len(t, 1, stt.log)
+		assert.Equal(t, []int{1, 2}, stt.log[0].old.Interface())
 	})
 }
 
