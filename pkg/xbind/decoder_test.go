@@ -1895,6 +1895,64 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, []int{1, 2}, dst.M["k"].L)
 	})
 
+	t.Run("error - failed indexes keep containers", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			L []int  `url:"l,required"`
+			A [2]int `url:"a"`
+		}{L: []int{5}, A: [2]int{7, 8}}
+		src := url.Values{"l[0]": {"x"}, "a[0]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"a[0]: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"l[0]: invalid value: cannot convert `x` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, []int{5}, dst.L)
+		assert.Equal(t, [2]int{7, 8}, dst.A)
+	})
+
+	t.Run("error - failed keys leave nil pointers nil", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			P   *int       `url:"p"`
+			Sub *TRequired `url:"sub"`
+		}{}
+		src := url.Values{"p": {"x"}, "sub.f_int": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"p: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"sub.f_int: invalid value: cannot convert `x` to int " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.P)
+		assert.Nil(t, dst.Sub)
+	})
+
+	t.Run("error - failed unmarshaler keeps the value", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			L TLevel    `url:"l"`
+			F TPromZero `url:"f"`
+		}{L: 5}
+		src := url.Values{"l": {"Lx"}, "f": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldCnt(t, 2, err)
+		assert.Equal(t, TLevel(5), dst.L)
+		assert.Nil(t, dst.F.Time)
+	})
+
 	t.Run("error - map entry not written on error", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{Items: map[string]TItem{"a": {Size: 1}}}
@@ -2386,8 +2444,7 @@ func Test_Decoder_Decode(t *testing.T) {
 			"next.zzz: invalid field path (ECUnkFieldPath)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, "a", dst.FStr)
-		assert.NotNil(t, dst.Next)
-		assert.Nil(t, dst.Next.tStr)
+		assert.Nil(t, dst.Next)
 	})
 
 	t.Run("field with pointer to own type", func(t *testing.T) {
@@ -3930,7 +3987,7 @@ func Test_deref(t *testing.T) {
 		val := reflect.ValueOf(&pp).Elem()
 
 		// --- When ---
-		have, err := deref(val)
+		have, err := deref(val, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3939,12 +3996,30 @@ func Test_deref(t *testing.T) {
 		assert.NotNil(t, *pp)
 	})
 
+	t.Run("saves the nil pointers it allocates", func(t *testing.T) {
+		// --- Given ---
+		var pp **int
+		val := reflect.ValueOf(&pp).Elem()
+
+		var saved []string
+		save := func(v reflect.Value) {
+			saved = append(saved, fmt.Sprintf("%s %v", v.Type(), v.IsNil()))
+		}
+
+		// --- When ---
+		_, err := deref(val, save)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, []string{"**int true", "*int true"}, saved)
+	})
+
 	t.Run("error - unexported nil pointer", func(t *testing.T) {
 		// --- Given ---
 		val := reflect.ValueOf(TUnexpPtr{}).Field(1)
 
 		// --- When ---
-		have, err := deref(val)
+		have, err := deref(val, nil)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)

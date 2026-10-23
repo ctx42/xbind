@@ -120,7 +120,7 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // fields of a struct and the structs it embeds, a key names the field Go
 // promotion selects, as in [encoding/json]. Errors of the src values are
 // returned as [xrr.FieldErrors] keyed by the src keys; the other values are
-// still set, and a key with a value error adds no slice element or map entry.
+// still set, and a key with an error changes nothing.
 // The first key reaching a slice or an array replaces it: the values of one key
 // replace the elements, indexed keys fill a new slice whose gaps are zero
 // values, and array elements no key sets are zeroed; a field with no key keeps
@@ -206,7 +206,10 @@ func (dec *Decoder) decode(
 		// Only the key names nothing; a value error may wrap the sentinel.
 		unknown := errors.Is(err, ErrUnkFieldPath)
 		if err == nil {
-			err = dec.apply(val, steps, vls, stt, "")
+			mark := len(stt.log)
+			if err = dec.apply(val, steps, vls, stt, ""); err != nil {
+				stt.undo(mark) // A key that fails changes nothing.
+			}
 		}
 		switch {
 		case err == nil, errors.Is(err, errIgnored):
@@ -403,7 +406,7 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 // state is the state of one [Decoder.Decode] call.
 type state struct {
 	reset   map[string]bool        // Canonical paths of the reset containers.
-	log     []resetLog             // The resets, in the order made.
+	log     []resetLog             // The resets and saves, in the order made.
 	entries map[string]mapEntry    // Map entries reached, by entry identity.
 	failed  map[string]bool        // Canonical paths of the values that failed.
 	set     map[string]bool        // Canonical paths of the values keys set.
@@ -412,11 +415,13 @@ type state struct {
 	levels  map[reflect.Type]level // Levels of the struct types met.
 }
 
-// resetLog is a reset of a slice or array, or a value a src key sets.
+// resetLog is a reset of a slice or array, or a value a src key sets, or a
+// value saved before a src key changes it.
 type resetLog struct {
-	pth string        // Canonical path of the value.
-	val reflect.Value // The value, when the reset zeroed it.
-	old reflect.Value // A copy of val from before the reset.
+	pth   string        // Canonical path of the value.
+	val   reflect.Value // The value, when the reset zeroed it or it was saved.
+	old   reflect.Value // A copy of val from before the change.
+	saved bool          // The value was saved, not reset.
 }
 
 // mapEntry is a map entry src keys reach.
@@ -494,12 +499,21 @@ func (stt *state) markReset(pth string, val reflect.Value) {
 	stt.log = append(stt.log, ent)
 }
 
-// undo forgets the resets made since the log held n of them, and sets back
-// the values they zeroed, latest first.
+// save logs a copy of val, so undo can set it back.
+func (stt *state) save(val reflect.Value) {
+	old := reflect.New(val.Type()).Elem()
+	old.Set(val)
+	stt.log = append(stt.log, resetLog{val: val, old: old, saved: true})
+}
+
+// undo forgets the resets made since the log held n entries, and sets back
+// the values they zeroed or saved, latest first.
 func (stt *state) undo(n int) {
 	for i := len(stt.log) - 1; i >= n; i-- {
 		ent := stt.log[i]
-		delete(stt.reset, ent.pth)
+		if !ent.saved {
+			delete(stt.reset, ent.pth)
+		}
 		if ent.val.IsValid() {
 			ent.val.Set(ent.old)
 		}
@@ -530,7 +544,14 @@ func (dec *Decoder) apply(
 		}
 		stt.set[pth] = true
 		stt.markReset(pth, reflect.Value{})
-		ok, err := setDst(dst, dec.reg, vls...)
+		val, err := deref(dst, stt.save)
+		if err == nil && isUnmarshal(val) && dec.reg[val.Type()] == nil {
+			stt.save(val) // UnmarshalText may change val before it fails.
+		}
+		ok := true
+		if err == nil {
+			ok, err = setDst(val, dec.reg, vls...)
+		}
 		if !ok {
 			err = decNotFound(dst.Type())
 		}
@@ -539,7 +560,7 @@ func (dec *Decoder) apply(
 		}
 		return err
 	}
-	dst, err := deref(dst)
+	dst, err := deref(dst, stt.save)
 	if err != nil {
 		return err
 	}
@@ -548,7 +569,7 @@ func (dec *Decoder) apply(
 	case stepField:
 		for n, i := range stp.idx {
 			if n > 0 {
-				if dst, err = deref(dst); err != nil {
+				if dst, err = deref(dst, stt.save); err != nil {
 					return err
 				}
 			}
@@ -868,7 +889,7 @@ func allocPath(dst reflect.Value, name string) error {
 // decode the value, it returns false with a nil error. Nil pointers are
 // allocated, as deref does, before dst is set.
 func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
-	dst, err := deref(dst)
+	dst, err := deref(dst, nil)
 	if err != nil {
 		return true, err
 	}
@@ -970,13 +991,17 @@ func decKey(kt reflect.Type, reg decReg, key string) (reflect.Value, error) {
 }
 
 // deref returns the value val points to, through any number of pointers,
-// allocating the nil ones. A nil pointer that cannot be set, an embedded
-// pointer to an unexported struct type, returns [ErrUnexported].
-func deref(val reflect.Value) (reflect.Value, error) {
+// allocating the nil ones; a non-nil save gets each of them first. A nil
+// pointer that cannot be set, an embedded pointer to an unexported struct
+// type, returns [ErrUnexported].
+func deref(val reflect.Value, save func(reflect.Value)) (reflect.Value, error) {
 	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			if !val.CanSet() {
 				return val, ErrUnexported
+			}
+			if save != nil {
+				save(val)
 			}
 			val.Set(reflect.New(val.Type().Elem()))
 		}
