@@ -1433,6 +1433,57 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, "d", def)
 	})
 
+	t.Run("map key spellings name one entry", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[int][]TItem `url:"m"`
+		}{}
+		src := url.Values{"m[1][0].size": {"1"}, "m[01][1].size": {"2"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := map[int][]TItem{1: {{Size: 1}, {Size: 2}}}
+		assert.Equal(t, want, dst.M)
+	})
+
+	t.Run("pointer map keys name one entry", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[*string]TItem `url:"m"`
+		}{}
+		src := url.Values{"m[a].size": {"1"}, "m[a].name": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 1, dst.M)
+		for key, val := range dst.M {
+			assert.Equal(t, "a", *key)
+			assert.Equal(t, TItem{Size: 1, Name: "x"}, val)
+		}
+	})
+
+	t.Run("error - NaN map key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[float64]int `url:"m"`
+		}{}
+		src := url.Values{"m[NaN]": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "m[NaN]: invalid value: NaN map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 0, dst.M)
+	})
+
 	t.Run("map of plain values takes the rest of a key", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2243,6 +2294,8 @@ func Test_newState(t *testing.T) {
 	assert.NotNil(t, have.reset)
 	assert.Len(t, 0, have.reset)
 	assert.Nil(t, have.log)
+	assert.NotNil(t, have.entries)
+	assert.Len(t, 0, have.entries)
 }
 
 func Test_state_markReset(t *testing.T) {
@@ -2257,6 +2310,49 @@ func Test_state_markReset(t *testing.T) {
 	// --- Then ---
 	assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
 	assert.Equal(t, []string{"a", "b"}, stt.log)
+}
+
+func Test_state_entry(t *testing.T) {
+	t.Run("equal keys name one entry", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		one := reflect.ValueOf(new(1))
+		ent := stt.entry("m", one, "01")
+
+		// --- When ---
+		have := stt.entry("m", reflect.ValueOf(new(1)), "1")
+
+		// --- Then ---
+		assert.Equal(t, "1", ent.text)
+		assert.Equal(t, ent.text, have.text)
+		assert.Same(t, one.Interface(), have.key.Interface())
+	})
+
+	t.Run("key without an encoder takes the src text", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		key := reflect.ValueOf(TPoint{1, 2})
+
+		// --- When ---
+		have := stt.entry("m", key, "1,2")
+
+		// --- Then ---
+		assert.Equal(t, "1,2", have.text)
+		assert.Equal(t, TPoint{1, 2}, have.key.Interface())
+	})
+
+	t.Run("maps at other paths", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		one := reflect.ValueOf(new(1))
+		ent := stt.entry("a", one, "1")
+
+		// --- When ---
+		have := stt.entry("b", reflect.ValueOf(new(1)), "1")
+
+		// --- Then ---
+		assert.NotSame(t, ent.key.Interface(), have.key.Interface())
+	})
 }
 
 func Test_state_undo(t *testing.T) {

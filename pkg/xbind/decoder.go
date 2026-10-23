@@ -106,17 +106,18 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // reaching a slice or an array replaces it: the values of one key replace the
 // elements, indexed keys fill a new slice whose gaps are zero values, and array
 // elements no key sets are zeroed; a field with no key keeps its value. Keys
-// are added to an existing map, and the values of a map are updated in place. A
-// nil pointer to a nested struct is allocated only when a src key leads into
-// it. A field with the "required" option is an [ErrRequired] error when it is
-// empty after decoding: a zero number, an empty string, slice or map, a nil
-// pointer, or a zero struct; a bool is never empty. The required fields of a
-// nil struct pointer, an absent struct, are not checked; those of the structs
-// in maps, slices and arrays are, under paths like "items[k].name". A src key
-// leading into an embedded nil pointer to a struct, which the decoder cannot
-// allocate because the field is unexported, is an [ErrUnexported] field error.
-// A struct tag of dst that does not parse is an [ErrInvTag] error. Pointers to
-// pointers to structs are not supported.
+// are added to an existing map, and the values of a map are updated in place;
+// keys decoding to equal values name one entry, and a NaN key is an
+// [ErrInvValue] field error. A nil pointer to a nested struct is allocated only
+// when a src key leads into it. A field with the "required" option is an
+// [ErrRequired] error when it is empty after decoding: a zero number, an empty
+// string, slice or map, a nil pointer, or a zero struct; a bool is never empty.
+// The required fields of a nil struct pointer, an absent struct, are not
+// checked; those of the structs in maps, slices and arrays are, under paths
+// like "items[k].name". A src key leading into an embedded nil pointer to a
+// struct, which the decoder cannot allocate because the field is unexported, is
+// an [ErrUnexported] field error. A struct tag of dst that does not parse is an
+// [ErrInvTag] error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -361,13 +362,42 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 
 // state is the state of one Decode call.
 type state struct {
-	reset map[string]bool // Canonical paths of the slices and arrays reset.
-	log   []string        // The paths in reset, in the order they were set.
+	reset   map[string]bool     // Canonical paths of slices and arrays reset.
+	log     []string            // The paths in reset, in the order set.
+	entries map[string]mapEntry // Map entries reached, by entry identity.
+}
+
+// mapEntry is a map entry src keys reach.
+type mapEntry struct {
+	key  reflect.Value // The map key, decoded from the first src key.
+	text string        // The key text in the canonical path of the entry.
 }
 
 // newState returns the state of a new Decode call.
 func newState() *state {
-	return &state{reset: make(map[string]bool)}
+	return &state{
+		reset:   make(map[string]bool),
+		entries: make(map[string]mapEntry),
+	}
+}
+
+// entry returns the entry of the map at the canonical path pth that the
+// decoded key names; txt is the src text of the key. Keys decoding to equal
+// values, by their encoded text, name one entry: its key is the first one
+// decoded, so pointer keys and keys holding pointers find it again, and its
+// text is the encoded text or, when the key type has no encoder, the src
+// text of the first key.
+func (stt *state) entry(pth string, key reflect.Value, txt string) mapEntry {
+	id := pth + "[" + keyText(key) + "]"
+	if ent, ok := stt.entries[id]; ok {
+		return ent
+	}
+	ent := mapEntry{key: key, text: txt}
+	if enc, err := encMapKey(key, nil); err == nil {
+		ent.text = enc
+	}
+	stt.entries[id] = ent
+	return ent
 }
 
 // markReset records the canonical path pth as reset.
@@ -434,6 +464,14 @@ func (dec *Decoder) apply(
 		if err != nil {
 			return err
 		}
+		if isNaN(key) {
+			// No lookup finds a NaN key, so its entry cannot be read back.
+			const format = "%w: NaN map key"
+			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
+		}
+		ent := stt.entry(pth, key, stp.key)
+		key = ent.key
+		kpt := pth + "[" + ent.text + "]"
 		val := reflect.New(dst.Type().Elem()).Elem()
 		// A value the key sets as a whole is new, so a pointer in the map
 		// keeps its pointee.
@@ -441,7 +479,7 @@ func (dec *Decoder) apply(
 			val.Set(cur)
 		}
 		mark := len(stt.log)
-		err = dec.apply(val, steps[1:], vls, stt, pth+stp.name)
+		err = dec.apply(val, steps[1:], vls, stt, kpt)
 		if err != nil {
 			stt.undo(mark) // The value with the resets is dropped.
 			return err

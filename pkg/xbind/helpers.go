@@ -6,6 +6,7 @@ package xbind
 import (
 	"database/sql/driver"
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 )
@@ -54,6 +55,18 @@ func keyText(key reflect.Value) string {
 		}
 	}
 	return fmt.Sprint(key.Interface())
+}
+
+// isNaN returns true if v is a float NaN, or a pointer to one.
+func isNaN(v reflect.Value) bool {
+	v = reflect.Indirect(v)
+	switch v.Kind() { //nolint:exhaustive
+	case reflect.Float32, reflect.Float64:
+		return math.IsNaN(v.Float())
+
+	default:
+		return false
+	}
 }
 
 // zeroer is implemented by types reporting whether they are zero.

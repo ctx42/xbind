@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"bytes"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -112,6 +113,32 @@ func Test_keyText_tabular(t *testing.T) {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
 			have := keyText(tc.key)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_isNaN_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		val  any
+		want bool
+	}{
+		{"NaN", math.NaN(), true},
+		{"float32 NaN", float32(math.NaN()), true},
+		{"pointer to NaN", new(math.NaN()), true},
+		{"number", 1.5, false},
+		{"not a float", "NaN", false},
+		{"nil pointer", (*float64)(nil), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isNaN(reflect.ValueOf(tc.val))
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
