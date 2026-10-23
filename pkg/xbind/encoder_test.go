@@ -2094,13 +2094,13 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 	t.Run("custom encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
-		dst := url.Values{}
-		s := &struct{ F []ct }{F: []ct{{a: "abc"}, {a: "xyz"}}}
-		src := reflectkit.GetValue(t, s, "F")
 		enc := func(value reflect.Value) (string, error) {
 			return "enc_" + value.Interface().(ct).a, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		dst := url.Values{}
+		s := &struct{ F []ct }{F: []ct{{a: "abc"}, {a: "xyz"}}}
+		src := reflectkit.GetValue(t, s, "F")
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -2132,9 +2132,6 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 	t.Run("error - element encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
-		dst := url.Values{}
-		s := &struct{ F []ct }{F: []ct{{a: "abc"}, {a: "xyz"}}}
-		src := reflectkit.GetValue(t, s, "F")
 		enc := func(value reflect.Value) (string, error) {
 			val := "enc_" + value.Interface().(ct).a
 			if val == "enc_xyz" {
@@ -2143,6 +2140,9 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 			return val, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		dst := url.Values{}
+		s := &struct{ F []ct }{F: []ct{{a: "abc"}, {a: "xyz"}}}
+		src := reflectkit.GetValue(t, s, "F")
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -2330,6 +2330,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("custom key encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
+		enc := func(value reflect.Value) (string, error) {
+			return "enc_" + value.Interface().(ct).a, nil
+		}
+		reg := encReg{reflect.TypeOf(ct{}): enc}
 		dst := url.Values{}
 		s := &struct {
 			F map[ct]int
@@ -2340,10 +2344,6 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
-		enc := func(value reflect.Value) (string, error) {
-			return "enc_" + value.Interface().(ct).a, nil
-		}
-		reg := encReg{reflect.TypeOf(ct{}): enc}
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -2358,6 +2358,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("custom value encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
+		enc := func(value reflect.Value) (string, error) {
+			return "enc_" + value.Interface().(ct).a, nil
+		}
+		reg := encReg{reflect.TypeOf(ct{}): enc}
 		dst := url.Values{}
 		s := &struct {
 			F map[int]ct
@@ -2368,10 +2372,6 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
-		enc := func(value reflect.Value) (string, error) {
-			return "enc_" + value.Interface().(ct).a, nil
-		}
-		reg := encReg{reflect.TypeOf(ct{}): enc}
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -2451,6 +2451,14 @@ func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("error - key encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
+		enc := func(value reflect.Value) (string, error) {
+			val := "enc_" + value.Interface().(ct).a
+			if val == "enc_xyz" {
+				return "", errors.New("msg")
+			}
+			return val, nil
+		}
+		reg := encReg{reflect.TypeOf(ct{}): enc}
 		dst := url.Values{}
 		s := &struct {
 			F map[ct]int
@@ -2461,14 +2469,6 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
-		enc := func(value reflect.Value) (string, error) {
-			val := "enc_" + value.Interface().(ct).a
-			if val == "enc_xyz" {
-				return "", errors.New("msg")
-			}
-			return val, nil
-		}
-		reg := encReg{reflect.TypeOf(ct{}): enc}
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -2481,6 +2481,14 @@ func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("error - value encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
+		enc := func(value reflect.Value) (string, error) {
+			val := "enc_" + value.Interface().(ct).a
+			if val == "enc_xyz" {
+				return "", errors.New("msg")
+			}
+			return val, nil
+		}
+		reg := encReg{reflect.TypeOf(ct{}): enc}
 		dst := url.Values{}
 		s := &struct {
 			F map[int]ct
@@ -2491,14 +2499,6 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
-		enc := func(value reflect.Value) (string, error) {
-			val := "enc_" + value.Interface().(ct).a
-			if val == "enc_xyz" {
-				return "", errors.New("msg")
-			}
-			return val, nil
-		}
-		reg := encReg{reflect.TypeOf(ct{}): enc}
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
