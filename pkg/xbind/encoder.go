@@ -60,13 +60,18 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // left out, and a nil slice or array element has no value, so the elements
 // after it move up one place when decoded. A pointer to a struct already
 // being encoded, a pointer cycle, is an [ErrCycle] error keyed by the field
-// path of the repeated pointer.
+// path of the repeated pointer, and a struct tag of src that does not parse
+// is an [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	val := reflect.ValueOf(src)
 	if reflect.Indirect(val).Kind() != reflect.Struct {
 		return ErrReqStructPtr
+	}
+	seen := map[reflect.Type]bool{}
+	if err := checkTags("", val.Type(), enc.tagName(), seen); err != nil {
+		return err
 	}
 	if val.Kind() != reflect.Pointer {
 		// Copy src to an addressable value, so the methods with pointer
@@ -142,7 +147,7 @@ func (enc *Encoder) encodeFields(
 	md := mirror.NewTypeMetadata(src.Type())
 	for i := 0; i < src.NumField(); i++ {
 		fld := md.FieldByIndex(i)
-		tag, _ := fld.Tag(enc.tagName()) // A malformed tag reads as no tag.
+		tag, _ := fld.Tag(enc.tagName()) // Encode checked the tags.
 		if tag.IsIgnored() {
 			continue
 		}

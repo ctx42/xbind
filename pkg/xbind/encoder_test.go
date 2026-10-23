@@ -1138,6 +1138,16 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"M.NaN": {"x"}}, dst)
 	})
 
+	t.Run("error - malformed struct tag", func(t *testing.T) {
+		// --- When ---
+		err := NewEncoder().Encode(url.Values{}, badTag(`url:n`, false))
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: N", err)
+		assert.ErrorIs(t, ErrInvTag, err)
+		xrrtest.AssertCode(t, ECInvTag, err)
+	})
+
 	t.Run("nil pointers", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

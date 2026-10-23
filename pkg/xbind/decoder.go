@@ -76,11 +76,16 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // pointer, an absent struct, are not checked. A src
 // key leading into an embedded nil pointer to a struct, which the decoder
 // cannot allocate because the field is unexported, is an [ErrUnexported]
-// field error. Pointers to pointers to structs are not supported.
+// field error. A struct tag of dst that does not parse is an [ErrInvTag]
+// error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
 		return ErrReqStructPtr
+	}
+	seen := map[reflect.Type]bool{}
+	if err := checkTags("", sv.Type(), dec.tagName(), seen); err != nil {
+		return err
 	}
 	return dec.decode(sv, src).Filter()
 }
@@ -156,7 +161,7 @@ func (dec *Decoder) resolve(
 	outer = append(outer, dst.Type())
 	var ignored bool // The name matched an ignored field.
 	for i, fld := range dst.Fields() {
-		tag, _ := fld.Tag(dec.tagName()) // A malformed tag reads as no tag.
+		tag, _ := fld.Tag(dec.tagName()) // Decode checked the tags.
 		if fld.IsAnonymous() && indirect(fld.Type()).Kind() == reflect.Struct {
 			if tag.IsIgnored() || slices.Contains(outer, indirect(fld.Type())) {
 				continue
@@ -234,7 +239,7 @@ func (dec *Decoder) required(
 
 	for i := 0; i < dst.NumField(); i++ {
 		fld := dst.FieldByIndex(i)
-		tag, _ := fld.Tag(dec.tagName()) // A malformed tag reads as no tag.
+		tag, _ := fld.Tag(dec.tagName()) // Decode checked the tags.
 		if tag.IsIgnored() {
 			continue
 		}

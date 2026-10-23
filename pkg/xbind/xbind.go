@@ -36,8 +36,11 @@ package xbind
 
 import (
 	"net/url"
+	"reflect"
 
 	"github.com/ctx42/xrr/pkg/xrr"
+
+	"github.com/ctx42/mirror/pkg/mirror"
 )
 
 // defaultTag is the struct tag name read by [Encoder] and [Decoder].
@@ -98,6 +101,10 @@ const (
 	// ECCycle represents the error code for a pointer to a struct already
 	// being encoded. Only [Encoder] sets it.
 	ECCycle = "ECCycle"
+
+	// ECInvTag represents the error code for a struct tag that does not
+	// parse.
+	ECInvTag = "ECInvTag"
 )
 
 // Binding errors.
@@ -145,4 +152,46 @@ var (
 
 	// ErrEncNotFound represents a type the [Encoder] cannot encode.
 	ErrEncNotFound = xrr.New("encoder not found", ECEncNotFound)
+
+	// ErrInvTag represents a struct tag that does not parse.
+	ErrInvTag = xrr.New("invalid struct tag", ECInvTag)
 )
+
+// checkTags returns an error wrapping [ErrInvTag], with the Go path to the
+// field, for the first field of the typ struct, or of a struct it nests or
+// embeds, whose struct tag does not parse; the tag of every key counts, as
+// mirror parses the tag as a whole. The key tag decides which fields are
+// ignored. Unexported fields, other than embedded ones, are skipped, as
+// [Decoder] and [Encoder] skip them. The seen map holds the struct types
+// checked so far, so a recursive type ends.
+func checkTags(
+	prefix string,
+	typ reflect.Type,
+	key string,
+	seen map[reflect.Type]bool,
+) error {
+
+	md := mirror.ReflectType(typ)
+	if seen[md.Type()] {
+		return nil
+	}
+	seen[md.Type()] = true
+	for _, fld := range md.Fields() {
+		if !fld.IsAnonymous() && !fld.IsExported() {
+			continue
+		}
+		pth := buildPath(prefix, fld.Name())
+		tag, err := fld.Tag(key)
+		if err != nil {
+			code := xrr.WithCode(ECInvTag)
+			return xrr.Newf("%w: %s", ErrInvTag, pth, code)
+		}
+		if tag.IsIgnored() || indirect(fld.Type()).Kind() != reflect.Struct {
+			continue
+		}
+		if err = checkTags(pth, fld.Type(), key, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}

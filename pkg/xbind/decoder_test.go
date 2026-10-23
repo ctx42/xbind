@@ -1185,6 +1185,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldIs(t, "n", ErrInvValue, err)
 	})
 
+	t.Run("error - malformed struct tag", func(t *testing.T) {
+		// --- When ---
+		err := NewDecoder().Decode(badTag(`url:n`, false), url.Values{})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: N", err)
+		assert.ErrorIs(t, ErrInvTag, err)
+		xrrtest.AssertCode(t, ECInvTag, err)
+	})
+
+	t.Run("error - malformed tag in nil nested struct", func(t *testing.T) {
+		// --- When ---
+		err := NewDecoder().Decode(badTag(`url:n`, true), url.Values{})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: F.N", err)
+	})
+
 	t.Run("error - required without tag name", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
