@@ -57,14 +57,18 @@ func UnmarshalJSONBody(req *http.Request, dst any) error {
 }
 
 // HUE handles low-level JSON unmarshal errors. It returns the error
-// [MaybeHUE] translates err to; any other error is enveloped with [ErrBind].
-// It returns nil when err is nil.
+// [MaybeHUE] translates err to, and a [json.InvalidUnmarshalError] (a nil or
+// non-pointer destination, a programming error) as it is; any other error is
+// enveloped with [ErrBind]. It returns nil when err is nil.
 func HUE(err error) error {
 	if err == nil {
 		return nil
 	}
 	if ok, e := MaybeHUE(err); ok {
 		return e
+	}
+	if _, ok := errors.AsType[*json.InvalidUnmarshalError](err); ok {
+		return err
 	}
 	return xrr.Envelop(err, ErrBind)
 }

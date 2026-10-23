@@ -23,6 +23,19 @@ import (
 )
 
 func Test_UnmarshalJSON(t *testing.T) {
+	t.Run("error - dst not a pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := struct{}{}
+
+		// --- When ---
+		err := UnmarshalJSON([]byte(`{}`), dst)
+
+		// --- Then ---
+		_, ok := errors.AsType[*json.InvalidUnmarshalError](err)
+		assert.True(t, ok)
+		assert.ErrorIsNot(t, ErrBind, err)
+	})
+
 	t.Run("ok", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -477,6 +490,17 @@ func Test_HUE(t *testing.T) {
 		var e xrr.Envelope
 		assert.ErrorAs(t, &e, err)
 		assert.ErrorIs(t, xrr.ErrInvJSON, e.Lead())
+	})
+
+	t.Run("invalid unmarshal error", func(t *testing.T) {
+		// --- Given ---
+		iue := &json.InvalidUnmarshalError{Type: reflect.TypeFor[int]()}
+
+		// --- When ---
+		err := HUE(iue)
+
+		// --- Then ---
+		assert.Same(t, iue, err)
 	})
 
 	t.Run("other error", func(t *testing.T) {
