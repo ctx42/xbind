@@ -159,8 +159,8 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 // struct type declares.
 func nilPromoted(v reflect.Value, name string) bool {
 	v = reflect.Indirect(v)
-	if v.Kind() != reflect.Struct {
-		return false
+	if v.Kind() != reflect.Struct || !hasNilEmbedded(v, map[uintptr]bool{}) {
+		return false // With no nil embedded field, no method lookup is needed.
 	}
 	pth, _ := methodPath(v.Type(), name, map[reflect.Type]bool{})
 	for n, i := range pth {
