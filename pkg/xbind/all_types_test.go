@@ -437,6 +437,25 @@ type TDouble struct {
 	TWrapB
 }
 
+// TItem is a struct used as an element of maps, slices and arrays.
+type TItem struct {
+	Size int    `url:"size"`
+	Name string `url:"name"`
+}
+
+// TBox holds containers of [TItem] in every supported shape.
+type TBox struct {
+	Items  map[string]TItem   `url:"items"`
+	PItems map[string]*TItem  `url:"pitems"`
+	List   []TItem            `url:"list"`
+	PList  []*TItem           `url:"plist"`
+	Arr    [2]TItem           `url:"arr"`
+	Nest   map[string][]TItem `url:"nest"`
+	Grid   [][]int            `url:"grid"`
+	Attr   map[string]string  `url:"attr"`
+	Dotted int                `url:"page.size"`
+}
+
 // TPoint is a struct decoded and encoded as one "X,Y" value by the functions
 // decPoint and encPoint.
 type TPoint struct{ X, Y int }

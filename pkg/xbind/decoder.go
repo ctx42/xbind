@@ -5,10 +5,11 @@ package xbind
 
 import (
 	"encoding"
+	"errors"
 	"fmt"
 	"net/url"
 	"reflect"
-	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ctx42/xrr/pkg/xrr"
@@ -33,6 +34,13 @@ func WithDecTag(tag string) DecoderOption {
 // source map.
 func WithDecAllowUnknown() DecoderOption {
 	return func(dec *Decoder) { dec.allowUnknown = true }
+}
+
+// WithDecMaxIndex is a [NewDecoder] option setting the largest slice or
+// array index a src key may use; a larger one is an [ErrInvValue] field
+// error. The default is [DefaultMaxIndex].
+func WithDecMaxIndex(n int) DecoderOption {
+	return func(dec *Decoder) { dec.maxIndex = n }
 }
 
 // WithDecFunc is a [NewDecoder] option decoding every value of type T with
@@ -63,8 +71,13 @@ func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 type Decoder struct {
 	tag          string // Struct field tag to use for aliasing.
 	allowUnknown bool   // Allow unknown fields.
+	maxIndex     int    // Largest index; zero means DefaultMaxIndex.
 	reg          decReg // Decoders registered with WithDecFunc.
 }
+
+// DefaultMaxIndex is the largest slice or array index a src key may use
+// unless [WithDecMaxIndex] sets another limit.
+const DefaultMaxIndex = 1000
 
 // NewDecoder returns a new instance of [Decoder] reading the "url" struct tag
 // and rejecting unknown keys unless the options say otherwise.
@@ -102,7 +115,7 @@ func (dec *Decoder) Decode(dst any, src url.Values) error {
 	if err := checkTags("", sv.Type(), dec.tagName(), seen); err != nil {
 		return err
 	}
-	return dec.decode(sv, src).Filter()
+	return dec.decode(sv, reflect.ValueOf(dst).Elem(), src).Filter()
 }
 
 // tagName returns the name of the struct tag the decoder reads.
@@ -113,10 +126,20 @@ func (dec *Decoder) tagName() string {
 	return dec.tag
 }
 
-// decode decodes src to the dst struct and returns the errors of the src
-// values and of the required fields left empty.
+// indexLimit returns the largest index a src key may use.
+func (dec *Decoder) indexLimit() int {
+	if dec.maxIndex == 0 {
+		return DefaultMaxIndex
+	}
+	return dec.maxIndex
+}
+
+// decode decodes src to the dst struct, sv and val being two views of it, and
+// returns the errors of the src values and of the required fields left
+// empty.
 func (dec *Decoder) decode(
-	dst *mirror.StructValue,
+	sv *mirror.StructValue,
+	val reflect.Value,
 	src url.Values,
 ) *xrr.FieldErrors {
 
@@ -128,33 +151,33 @@ func (dec *Decoder) decode(
 		ers.Set(pth, err)
 	}
 
-	// Go over src keys and match them with struct fields.
-	for pth, vls := range src {
-		lvl := newLevel(dst.Type(), dec.tagName())
-		res := dec.resolve("", strings.Split(pth, "."), dst, nil, lvl)
-		if res.ignored {
-			continue
+	reset := make(map[string]bool) // Slice paths reset in this call.
+	for key, vls := range src {
+		segs, ok := parseKey(key)
+		var steps []step
+		var err error
+		if !ok {
+			err = ErrUnkFieldPath
+		} else {
+			steps, err = dec.plan(val.Type(), segs)
 		}
-		if res.unexported {
-			setErr(pth, ErrUnexported)
-			continue
+		if err == nil {
+			err = dec.apply(val, steps, vls, reset, "")
 		}
-		if !res.isComplete() {
+		switch {
+		case err == nil, errors.Is(err, errIgnored):
+		case errors.Is(err, ErrUnkFieldPath):
 			if !dec.allowUnknown {
-				setErr(pth, ErrUnkFieldPath)
+				setErr(key, ErrUnkFieldPath)
 			}
-			continue
-		}
-		key := strings.Join(res.remainder, ".")
-		dstV := res.dst.NewIfNil().Value()
-		if err := setField(dstV, dec.reg, key, vls...); err != nil {
-			setErr(pth, err)
+		default:
+			setErr(key, err)
 		}
 	}
 
 	// A field with a value error keeps that error.
-	lvl := newLevel(dst.Type(), dec.tagName())
-	dec.required("", dst, lvl, map[ptrKey]bool{}, func(pth string, err error) {
+	lvl := newLevel(sv.Type(), dec.tagName())
+	dec.required("", sv, lvl, map[ptrKey]bool{}, func(pth string, err error) {
 		if ers == nil || ers.Get(pth) == nil {
 			setErr(pth, err)
 		}
@@ -162,87 +185,271 @@ func (dec *Decoder) decode(
 	return ers
 }
 
-// resolve takes a path to a field and returns its value and its path. The
-// outer types are the structs embedding dst at the current path segment; an
-// embedded struct of one of them is skipped, so an embedding cycle ends. The
-// lvl is the level position of dst; a field is matched only by the key it
-// names there.
-func (dec *Decoder) resolve(
-	pth string,
-	remainder []string,
-	dst *mirror.StructValue,
-	outer []reflect.Type,
-	lvl level,
-) result {
+// segment is one part of a src key: a name, or a literal written in
+// brackets, which may contain dots.
+type segment struct {
+	text    string // Segment text.
+	bracket bool   // The segment was written in brackets.
+}
 
-	if len(remainder) == 0 {
-		return result{}
+// parseKey splits the src key into segments: names separated by dots, and
+// literals in brackets ("a.b[c.d][0]"). It returns false for an empty key or
+// segment, a bracket that does not close, a bracket in brackets, and text or
+// a dot that does not follow the rules.
+func parseKey(key string) ([]segment, bool) {
+	var segs []segment
+	for i := 0; i < len(key); {
+		if key[i] == '[' {
+			end := strings.IndexAny(key[i+1:], "[]")
+			if end <= 0 || key[i+1+end] != ']' {
+				return nil, false
+			}
+			txt := key[i+1 : i+1+end]
+			segs = append(segs, segment{text: txt, bracket: true})
+			i += end + 2
+		} else {
+			end := strings.IndexAny(key[i:], ".[]")
+			if end < 0 {
+				end = len(key) - i
+			}
+			if end == 0 {
+				return nil, false
+			}
+			segs = append(segs, segment{text: key[i : i+end]})
+			i += end
+		}
+		if i == len(key) || key[i] == '[' {
+			continue
+		}
+		// Only a dot followed by a name may come next.
+		if key[i] != '.' || i+1 == len(key) ||
+			strings.IndexByte(".[]", key[i+1]) >= 0 {
+
+			return nil, false
+		}
+		i++
 	}
-	outer = append(outer, dst.Type())
-	var ignored bool // The name matched an ignored field.
-	for i, fld := range dst.Fields() {
-		tag, _ := fld.Tag(dec.tagName()) // Decode checked the tags.
-		if fld.IsAnonymous() && indirect(fld.Type()).Kind() == reflect.Struct {
-			if tag.IsIgnored() || slices.Contains(outer, indirect(fld.Type())) {
-				continue
+	return segs, len(segs) > 0
+}
+
+// stepKind tells what a step of a key path selects.
+type stepKind uint8
+
+// Kinds of steps.
+const (
+	stepField stepKind = iota // A struct field.
+	stepKey                   // A map entry.
+	stepIndex                 // A slice or array element.
+)
+
+// step is one move along a key path, from a value to a part of it.
+type step struct {
+	kind stepKind
+	idx  []int  // Field index path, through embedded structs.
+	key  string // Map key text.
+	pos  int    // Slice or array index.
+	name string // Canonical path segment: a field name, [key] or [n].
+}
+
+// errIgnored reports a src key naming an ignored field; the key is skipped.
+var errIgnored = errors.New("ignored field")
+
+// plan returns the steps a src key, split into segs, takes from a value of
+// type typ. A struct segment names a field, a map segment is the key, and a
+// slice or array segment is an index; a map of plain values given a key that
+// is not bracketed takes the rest of the key as its key. The typ struct
+// itself is always walked field by field, like the encoder does at the empty
+// path, even when it has a promoted UnmarshalText method. A key naming
+// nothing returns [ErrUnkFieldPath], one naming an ignored field returns
+// errIgnored, and an index over the limit or past an array end returns an
+// error wrapping [ErrInvValue].
+func (dec *Decoder) plan(typ reflect.Type, segs []segment) ([]step, error) {
+	var steps []step
+	for {
+		typ = indirect(typ)
+		leaf := len(steps) > 0 && dec.isLeafType(typ)
+		if len(segs) == 0 {
+			// Structs and maps take more of the key.
+			kind := typ.Kind()
+			if !leaf && (kind == reflect.Struct || kind == reflect.Map) {
+				return nil, ErrUnkFieldPath
 			}
-			fv := dst.FieldByIndex(i)
-			sv := fv.StructValue().NewIfNil()
-			val := fv.Value()
-			unexported := val.Kind() == reflect.Pointer && val.IsNil()
-			if unexported {
-				// An unexported pointer, which cannot be allocated. A
-				// throwaway value tells whether the path leads into it.
-				tmp := reflect.New(val.Type().Elem()).Interface()
-				sv = mirror.NewStructValue(tmp)
-			}
-			res := dec.resolve(pth, remainder, sv, outer, lvl.embedded(i))
-			if !res.isZero() {
-				if unexported {
-					return result{pth: res.pth, unexported: true}
+			return steps, nil
+		}
+		seg := segs[0]
+		switch {
+		case leaf:
+			return nil, ErrUnkFieldPath
+
+		case typ.Kind() == reflect.Struct:
+			lvl := newLevel(typ, dec.tagName())
+			idx, ok := lvl.vis[seg.text]
+			if !ok {
+				if lvl.ign[seg.text] {
+					return nil, errIgnored
 				}
-				return res
+				return nil, ErrUnkFieldPath
 			}
-			ignored = ignored || res.ignored
-			continue
-		}
+			stp := step{kind: stepField, idx: idx, name: seg.text}
+			steps = append(steps, stp)
+			typ = typ.FieldByIndex(idx).Type
+			segs = segs[1:]
 
-		name := tag.NameOrField()
-		if name != remainder[0] {
-			continue
-		}
-		if tag.IsIgnored() {
-			ignored = true
-			continue
-		}
-		if !fld.IsExported() || !lvl.names(name, i) {
-			continue
-		}
-		fldPath := buildPath(pth, name)
-		fv := dst.FieldByIndex(i)
-		ret := fv.Value()
-
-		if ret.Type().Implements(iUnmarshaler) ||
-			ret.CanAddr() && ret.Addr().Type().Implements(iUnmarshaler) {
-
-			return result{
-				dst:       fv,
-				pth:       fldPath,
-				unm:       true,
-				remainder: remainder[1:],
+		case typ.Kind() == reflect.Map:
+			key := seg.text
+			segs = segs[1:]
+			if !seg.bracket && dec.isLeafValue(typ.Elem()) {
+				for _, nxt := range segs {
+					if nxt.bracket {
+						return nil, ErrUnkFieldPath
+					}
+					key += "." + nxt.text
+				}
+				segs = nil
 			}
-		}
+			stp := step{kind: stepKey, key: key, name: "[" + key + "]"}
+			steps = append(steps, stp)
+			typ = typ.Elem()
 
-		if typ := indirect(ret.Type()); typ.Kind() == reflect.Struct &&
-			typ != typTime && dec.reg[typ] == nil {
-
-			sv := fv.NewIfNil().StructValue()
-			nxt := newLevel(sv.Type(), dec.tagName())
-			return dec.resolve(fldPath, remainder[1:], sv, nil, nxt)
+		default: // A slice or an array, the other types that are not leaves.
+			pos, err := dec.index(typ, seg.text)
+			if err != nil {
+				return nil, err
+			}
+			name := "[" + strconv.Itoa(pos) + "]"
+			steps = append(steps, step{kind: stepIndex, pos: pos, name: name})
+			typ = typ.Elem()
+			segs = segs[1:]
 		}
-		return result{dst: fv, pth: fldPath, remainder: remainder[1:]}
 	}
-	return result{ignored: ignored}
+}
+
+// index returns the index txt names in a slice or array of type typ. Text
+// that is not a decimal number returns [ErrUnkFieldPath]; an index over the
+// limit, or past the end of an array, returns an error wrapping
+// [ErrInvValue].
+func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
+	if strings.TrimLeft(txt, "0123456789") != "" {
+		return 0, ErrUnkFieldPath
+	}
+	pos, err := strconv.Atoi(txt)
+	if err != nil || pos > dec.indexLimit() {
+		const format = "%w: index %s over the limit %d"
+		code := xrr.WithCode(ECInvValue)
+		return 0, xrr.Newf(format, ErrInvValue, txt, dec.indexLimit(), code)
+	}
+	if typ.Kind() == reflect.Array && pos >= typ.Len() {
+		const format = "%w: index %d past the array end"
+		return 0, xrr.Newf(format, ErrInvValue, pos, xrr.WithCode(ECInvValue))
+	}
+	return pos, nil
+}
+
+// apply moves from dst along the steps and sets the value reached to vls.
+// Nil pointers on the way are allocated, and map entries are written back
+// after the value in them is set. The first step into a slice or array in a
+// Decode call resets it; reset holds the canonical paths reset so far, and
+// pth is the canonical path of dst.
+func (dec *Decoder) apply(
+	dst reflect.Value,
+	steps []step,
+	vls []string,
+	reset map[string]bool,
+	pth string,
+) error {
+
+	if len(steps) == 0 {
+		reset[pth] = true
+		ok, err := setDst(dst, dec.reg, vls...)
+		if !ok {
+			return decNotFound(dst.Type())
+		}
+		return err
+	}
+	dst, err := deref(dst)
+	if err != nil {
+		return err
+	}
+	stp := steps[0]
+	switch stp.kind {
+	case stepField:
+		for n, i := range stp.idx {
+			if n > 0 {
+				if dst, err = deref(dst); err != nil {
+					return err
+				}
+			}
+			dst = dst.Field(i)
+		}
+		return dec.apply(dst, steps[1:], vls, reset, fieldPath(pth, stp.name))
+
+	case stepKey:
+		if dst.IsNil() {
+			dst.Set(reflect.MakeMap(dst.Type()))
+		}
+		key, err := decKey(dst.Type().Key(), dec.reg, stp.key)
+		if err != nil {
+			return err
+		}
+		val := reflect.New(dst.Type().Elem()).Elem()
+		if cur := dst.MapIndex(key); cur.IsValid() {
+			val.Set(cur)
+		}
+		err = dec.apply(val, steps[1:], vls, reset, pth+stp.name)
+		if err != nil {
+			return err
+		}
+		dst.SetMapIndex(key, val)
+		return nil
+
+	default:
+		if !reset[pth] {
+			reset[pth] = true
+			dst.SetZero()
+		}
+		if dst.Kind() == reflect.Slice && dst.Len() <= stp.pos {
+			dst.Grow(stp.pos + 1 - dst.Len())
+			dst.SetLen(stp.pos + 1)
+		}
+		elem := dst.Index(stp.pos)
+		return dec.apply(elem, steps[1:], vls, reset, pth+stp.name)
+	}
+}
+
+// isLeafType returns true if a value of the typ type, which is not a
+// pointer, is set from src values as a whole: by a registered decoder, by its
+// [encoding.TextUnmarshaler], or by a built-in decoder. Structs, maps,
+// slices and arrays without one take more of the key.
+func (dec *Decoder) isLeafType(typ reflect.Type) bool {
+	if dec.reg[typ] != nil || typ == typTime {
+		return true
+	}
+	if typ.Implements(iUnmarshaler) ||
+		reflect.PointerTo(typ).Implements(iUnmarshaler) {
+
+		return true
+	}
+	switch typ.Kind() { //nolint:exhaustive
+	case reflect.Struct, reflect.Map, reflect.Slice, reflect.Array:
+		return false
+
+	default:
+		return true
+	}
+}
+
+// isLeafValue returns true if a map value of the typ type is set from src
+// values without more of the key: a leaf type, or a slice or array of one.
+func (dec *Decoder) isLeafValue(typ reflect.Type) bool {
+	typ = indirect(typ)
+	if dec.isLeafType(typ) {
+		return true
+	}
+	kind := typ.Kind()
+	if kind == reflect.Slice || kind == reflect.Array {
+		return dec.isLeafType(indirect(typ.Elem()))
+	}
+	return false
 }
 
 // required sets an [ErrRequired] error, using setErr, for each required field
@@ -286,8 +493,8 @@ func (dec *Decoder) required(
 		if (!anon || !isStruct) && !lvl.names(name, i) {
 			continue
 		}
-		fldPath := buildPath(prefix, name)
-		if isStruct && (anon || !dec.isLeaf(fld.Value())) {
+		fldPath := fieldPath(prefix, name)
+		if isStruct && (anon || !dec.isLeafType(indirect(fld.Type()))) {
 			// The path to a field that comes from an embedded struct does
 			// not include the name of the embedded struct.
 			if anon {
@@ -316,50 +523,53 @@ func (dec *Decoder) required(
 		if tag.Contains("required") && isEmpty(fld.Value()) {
 			setErr(fldPath, ErrRequired)
 		}
+		dec.requiredIn(fldPath, fld.Value(), seen, setErr)
 	}
 }
 
-// isLeaf returns true if the struct, or pointer to a struct, val is set as a
-// whole: by a registered decoder or by its [encoding.TextUnmarshaler].
-func (dec *Decoder) isLeaf(val reflect.Value) bool {
-	if dec.reg[indirect(val.Type())] != nil ||
-		val.Type().Implements(iUnmarshaler) {
+// requiredIn checks the required fields of the structs held in val, a slice,
+// array or map, or a pointer to one, and in the containers nested in it; pth
+// is the canonical path of val, and seen is as for required.
+func (dec *Decoder) requiredIn(
+	pth string,
+	val reflect.Value,
+	seen map[ptrKey]bool,
+	setErr func(string, error),
+) {
 
-		return true
+	if val.Kind() == reflect.Pointer {
+		key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
+		if val.IsNil() || seen[key] {
+			return
+		}
+		seen[key] = true
+		defer delete(seen, key)
+		val = val.Elem()
 	}
-	return val.CanAddr() && val.Addr().Type().Implements(iUnmarshaler)
-}
-
-// result represents the result of resolving a field path.
-type result struct {
-	dst     *mirror.FieldValue // Value to use to set a field.
-	pth     string             // Absolute path to a field.
-	ignored bool               // The path leads to an ignored field.
-	unm     bool               // The field implements TextUnmarshaler.
-
-	// The path leads into a nil embedded struct pointer the decoder cannot
-	// allocate because the embedded type is unexported; dst is nil.
-	unexported bool
-
-	// Unused path suffix (the key in the case of maps).
-	remainder []string
-}
-
-// isZero returns true if the path did not resolve to a field, or to an
-// unexported field.
-func (res result) isZero() bool { return res.dst == nil && !res.unexported }
-
-// isComplete returns true if the path resolved to a field and its remainder
-// fits the field: a non-empty map key for a map field, or a pointer to a map,
-// nothing for other fields and for fields implementing TextUnmarshaler.
-func (res result) isComplete() bool {
-	if res.dst == nil {
-		return false
+	if dec.isLeafType(val.Type()) {
+		return
 	}
-	if !res.unm && indirect(res.dst.Type()).Kind() == reflect.Map {
-		return strings.Join(res.remainder, ".") != ""
+	switch val.Kind() { //nolint:exhaustive
+	case reflect.Struct:
+		if !val.CanAddr() {
+			val = addressable(val)
+		}
+		sv := mirror.NewStructValue(val.Addr().Interface())
+		lvl := newLevel(val.Type(), dec.tagName())
+		dec.required(pth, sv, lvl, seen, setErr)
+
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < val.Len(); i++ {
+			ipt := pth + "[" + strconv.Itoa(i) + "]"
+			dec.requiredIn(ipt, val.Index(i), seen, setErr)
+		}
+
+	case reflect.Map:
+		for it := val.MapRange(); it.Next(); {
+			kpt := pth + "[" + keyText(it.Key()) + "]"
+			dec.requiredIn(kpt, it.Value(), seen, setErr)
+		}
 	}
-	return len(res.remainder) == 0
 }
 
 // isUnmarshal returns true if dst is addressable and its address implements
@@ -479,66 +689,36 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 	return nil
 }
 
-// setMap expects dst to be a non-nil map. It sets the map key to the values.
-func setMap(dst reflect.Value, reg decReg, key string, vls ...string) error {
-	kt := dst.Type().Key()
+// decKey returns a map key of the kt type decoded from key.
+func decKey(kt reflect.Type, reg decReg, key string) (reflect.Value, error) {
 	nk := reflect.New(indirect(kt))
 	ok, err := setDst(nk.Elem(), reg, key)
 	if !ok {
-		return decNotFound(kt)
+		return reflect.Value{}, decNotFound(kt)
 	}
 	if err != nil {
-		return err
+		return reflect.Value{}, err
 	}
 	if kt.Kind() != reflect.Pointer {
 		nk = nk.Elem() // Map key is not a pointer type.
 	}
-
-	vt := dst.Type().Elem()
-	nv := reflect.New(indirect(vt))
-	if ok, err = setDst(nv.Elem(), reg, vls...); !ok {
-		return decNotFound(vt)
-	}
-	if err != nil {
-		return err
-	}
-	if vt.Kind() != reflect.Pointer {
-		nv = nv.Elem() // Map value is not a pointer type.
-	}
-
-	dst.SetMapIndex(nk, nv)
-	return nil
+	return nk, nil
 }
 
-// setField sets a struct field, or the field a non-nil pointer points to,
-// using the values. If the field is a map, the key must be set to the string
-// representation of the map key.
-func setField(dst reflect.Value, reg decReg, key string, vls ...string) error {
-	val := reflect.Indirect(dst)
-	if val.IsValid() && reg[val.Type()] != nil {
-		_, err := setDst(dst, reg, vls...)
-		return err
-	}
-	if ok, err := useUnmarshal(val, vls...); ok {
-		return err
-	}
-
-	switch val.Kind() { //nolint:exhaustive
-	case reflect.Slice, reflect.Array:
-		return setSliceOrArray(val, reg, vls...)
-
-	case reflect.Map:
+// deref returns the value val points to, through any number of pointers,
+// allocating the nil ones. A nil pointer that cannot be set, an embedded
+// pointer to an unexported struct type, returns [ErrUnexported].
+func deref(val reflect.Value) (reflect.Value, error) {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
-			val.Set(reflect.MakeMap(val.Type()))
+			if !val.CanSet() {
+				return val, ErrUnexported
+			}
+			val.Set(reflect.New(val.Type().Elem()))
 		}
-		return setMap(val, reg, key, vls...)
-
-	default:
-		if ok, err := setDst(dst, reg, vls...); ok {
-			return err
-		}
-		return decNotFound(dst.Type())
+		val = val.Elem()
 	}
+	return val, nil
 }
 
 // decNotFound returns an error wrapping [ErrDecNotFound] naming the typ type.

@@ -5,7 +5,9 @@ package xbind
 
 import (
 	"database/sql/driver"
+	"fmt"
 	"reflect"
+	"strings"
 )
 
 // isNil returns true if v is a nil pointer or a nil interface.
@@ -29,6 +31,29 @@ func buildPath(pref, name string) string {
 		return pref + "." + name
 	}
 	return name
+}
+
+// fieldPath returns the path to the field name under the pref path: the
+// name after a dot or, when the name contains a dot, in brackets.
+func fieldPath(pref, name string) string {
+	if strings.Contains(name, ".") {
+		return pref + "[" + name + "]"
+	}
+	return buildPath(pref, name)
+}
+
+// keyText returns the text of the map key, as the encoder writes it when it
+// can, else as [fmt.Sprint] prints it.
+func keyText(key reflect.Value) string {
+	if key.Kind() == reflect.Interface && !key.IsNil() {
+		key = key.Elem()
+	}
+	if !isNil(key) {
+		if txt, err := encMapKey(key, nil); err == nil {
+			return txt
+		}
+	}
+	return fmt.Sprint(key.Interface())
 }
 
 // zeroer is implemented by types reporting whether they are zero.

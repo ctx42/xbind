@@ -67,6 +67,58 @@ func Test_buildPath_tabular(t *testing.T) {
 	}
 }
 
+func Test_fieldPath_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		pref string
+		name string
+		want string
+	}{
+		{"name", "", "a", "a"},
+		{"prefixed name", "p", "a", "p.a"},
+		{"dotted name", "", "a.b", "[a.b]"},
+		{"prefixed dotted name", "p", "a.b", "p[a.b]"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := fieldPath(tc.pref, tc.name)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_keyText_tabular(t *testing.T) {
+	nilItf := reflect.ValueOf(map[any]int{(*int)(nil): 1}).MapKeys()[0]
+
+	tt := []struct {
+		testN string
+
+		key  reflect.Value
+		want string
+	}{
+		{"int", reflect.ValueOf(7), "7"},
+		{"text marshaler", reflect.ValueOf(TTextVal('A')), "A"},
+		{"no encoder", reflect.ValueOf(TItem{Size: 1}), "{1 }"},
+		{"nil pointer", reflect.ValueOf((*int)(nil)), "<nil>"},
+		{"nil pointer in interface", nilItf, "<nil>"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := keyText(tc.key)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_isZero(t *testing.T) {
 	t.Run("struct read through unexported field", func(t *testing.T) {
 		// --- Given ---
