@@ -188,12 +188,14 @@ func (dec *Decoder) decode(
 		} else {
 			steps, err = dec.plan(val.Type(), segs)
 		}
+		// Only the key names nothing; a value error may wrap the sentinel.
+		unknown := errors.Is(err, ErrUnkFieldPath)
 		if err == nil {
 			err = dec.apply(val, steps, vls, stt, "")
 		}
 		switch {
 		case err == nil, errors.Is(err, errIgnored):
-		case errors.Is(err, ErrUnkFieldPath):
+		case unknown:
 			if !dec.allowUnknown {
 				setErr(key, ErrUnkFieldPath)
 			}

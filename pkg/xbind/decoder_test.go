@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"encoding"
+	"fmt"
 	"io"
 	"math"
 	"net/url"
@@ -1640,6 +1641,27 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Nil(t, dst.List)
 		assert.Nil(t, dst.Items)
+	})
+
+	t.Run("error - decoder error wrapping unknown path", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(
+			WithDecAllowUnknown(),
+			WithDecFunc(func(string) (TPoint, error) {
+				return TPoint{}, fmt.Errorf("bad: %w", ErrUnkFieldPath)
+			}),
+		)
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"p": {"1,2"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		want := "p: bad: invalid field path (ECGeneric)"
+		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
 	t.Run("error - pointer map value keeps its slice", func(t *testing.T) {
