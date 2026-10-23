@@ -276,7 +276,8 @@ func decTime(vls ...string) (any, error) {
 	}
 	v, err := time.Parse(time.RFC3339, val)
 	if err != nil {
-		return nil, convertErr(val, "RFC3339 time")
+		code := xrr.WithCode(ECInvTimeFormat)
+		return nil, xrr.Newf("%w: %#q", ErrTimeFormat, val, code)
 	}
 	return v, nil
 }
@@ -289,7 +290,8 @@ func decDur(vls ...string) (any, error) {
 	}
 	v, err := time.ParseDuration(val)
 	if err != nil {
-		return nil, convertErr(val, "duration")
+		code := xrr.WithCode(ECInvDurFormat)
+		return nil, xrr.Newf("%w: %#q", ErrDurFormat, val, code)
 	}
 	return v, nil
 }

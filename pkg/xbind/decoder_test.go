@@ -302,8 +302,8 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		want := "" +
-			"f_1: invalid value: cannot convert `2000-01-02T03:04:05`" +
-			" to RFC3339 time (ECInvValue); " +
+			"f_1: invalid RFC3339 time: `2000-01-02T03:04:05` " +
+			"(ECInvTimeFormat); " +
 			"f_2: cannot be blank (ECRequired)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
@@ -321,8 +321,8 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		want := "" +
-			"f_1: invalid value: cannot convert `2000-01-02T03:04:05`" +
-			" to RFC3339 time (ECInvValue)"
+			"f_1: invalid RFC3339 time: `2000-01-02T03:04:05` " +
+			"(ECInvTimeFormat)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 

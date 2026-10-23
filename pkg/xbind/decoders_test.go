@@ -1131,12 +1131,10 @@ func Test_decTime(t *testing.T) {
 		_, err := decTime("202203-15T11:43:01Z")
 
 		// --- Then ---
-		want := "" +
-			"invalid value: cannot convert " +
-			"`202203-15T11:43:01Z` to RFC3339 time"
+		want := "invalid RFC3339 time: `202203-15T11:43:01Z`"
 		assert.ErrorEqual(t, want, err)
-		assert.ErrorIs(t, ErrInvValue, err)
-		xrrtest.AssertCode(t, ECInvValue, err)
+		assert.ErrorIs(t, ErrTimeFormat, err)
+		xrrtest.AssertCode(t, ECInvTimeFormat, err)
 	})
 
 	t.Run("error - empty value", func(t *testing.T) {
@@ -1144,10 +1142,9 @@ func Test_decTime(t *testing.T) {
 		_, err := decTime("")
 
 		// --- Then ---
-		want := "invalid value: cannot convert `` to RFC3339 time"
-		assert.ErrorEqual(t, want, err)
-		assert.ErrorIs(t, ErrInvValue, err)
-		xrrtest.AssertCode(t, ECInvValue, err)
+		assert.ErrorEqual(t, "invalid RFC3339 time: ``", err)
+		assert.ErrorIs(t, ErrTimeFormat, err)
+		xrrtest.AssertCode(t, ECInvTimeFormat, err)
 	})
 
 	t.Run("error - require single value", func(t *testing.T) {
@@ -1204,10 +1201,9 @@ func Test_decDur(t *testing.T) {
 		_, err := decDur("1abc")
 
 		// --- Then ---
-		want := "invalid value: cannot convert `1abc` to duration"
-		assert.ErrorEqual(t, want, err)
-		assert.ErrorIs(t, ErrInvValue, err)
-		xrrtest.AssertCode(t, ECInvValue, err)
+		assert.ErrorEqual(t, "invalid duration string: `1abc`", err)
+		assert.ErrorIs(t, ErrDurFormat, err)
+		xrrtest.AssertCode(t, ECInvDurFormat, err)
 	})
 
 	t.Run("error - empty value", func(t *testing.T) {
@@ -1215,10 +1211,9 @@ func Test_decDur(t *testing.T) {
 		_, err := decDur("")
 
 		// --- Then ---
-		want := "invalid value: cannot convert `` to duration"
-		assert.ErrorEqual(t, want, err)
-		assert.ErrorIs(t, ErrInvValue, err)
-		xrrtest.AssertCode(t, ECInvValue, err)
+		assert.ErrorEqual(t, "invalid duration string: ``", err)
+		assert.ErrorIs(t, ErrDurFormat, err)
+		xrrtest.AssertCode(t, ECInvDurFormat, err)
 	})
 
 	t.Run("error - require single value", func(t *testing.T) {
