@@ -99,7 +99,7 @@ func isZero(v reflect.Value) bool {
 		return true
 
 	case reflect.Struct:
-		if hasNilEmbedded(v, map[uintptr]bool{}) {
+		if hasNilEmbedded(v, map[ptrKey]bool{}) {
 			// A method promoted through a nil pointer or interface would panic.
 			return isZeroFields(v)
 		}
@@ -134,7 +134,7 @@ func isZeroFields(v reflect.Value) bool {
 // interface, directly or through embedded structs, struct pointers and the
 // values embedded interfaces hold. The struct pointers in seen are skipped, so
 // an embedding cycle ends.
-func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
+func hasNilEmbedded(v reflect.Value, seen map[ptrKey]bool) bool {
 	for i := 0; i < v.NumField(); i++ {
 		if !v.Type().Field(i).Anonymous {
 			continue
@@ -149,10 +149,11 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 			}
 		}
 		if fld.Kind() == reflect.Pointer {
-			if seen[fld.Pointer()] {
+			key := ptrKey{ptr: fld.Pointer(), typ: fld.Type()}
+			if seen[key] {
 				continue
 			}
-			seen[fld.Pointer()] = true
+			seen[key] = true
 			fld = fld.Elem()
 		}
 		if fld.Kind() == reflect.Struct && hasNilEmbedded(fld, seen) {
@@ -178,7 +179,7 @@ func nilPromoted(v reflect.Value, name string) bool {
 		return len(pth) > 0 || val
 	}
 	v = reflect.Indirect(v)
-	if v.Kind() != reflect.Struct || !hasNilEmbedded(v, map[uintptr]bool{}) {
+	if v.Kind() != reflect.Struct || !hasNilEmbedded(v, map[ptrKey]bool{}) {
 		return false // With no nil embedded field, no method lookup is needed.
 	}
 	pth, _ := methodPath(v.Type(), name, map[reflect.Type]bool{})
@@ -307,7 +308,7 @@ func isEmpty(v reflect.Value) bool {
 		base = base.Elem()
 	}
 	nilEmb := base.Kind() == reflect.Struct &&
-		hasNilEmbedded(base, map[uintptr]bool{})
+		hasNilEmbedded(base, map[ptrKey]bool{})
 	if v.CanInterface() && !nilEmb {
 		if zer, ok := v.Interface().(zeroer); ok {
 			return zer.IsZero()

@@ -865,7 +865,7 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	if err != nil {
 		return true, err
 	}
-	if dst.Kind() == reflect.Struct && hasNilEmbedded(dst, map[uintptr]bool{}) {
+	if dst.Kind() == reflect.Struct && hasNilEmbedded(dst, map[ptrKey]bool{}) {
 		// The method may be promoted through a nil embedded pointer.
 		if err = allocPath(dst, "UnmarshalText"); err != nil {
 			return true, err

@@ -296,13 +296,30 @@ func Test_hasNilEmbedded(t *testing.T) {
 		// --- Given ---
 		cyc := &TCycle{}
 		cyc.TCycle = cyc
-		seen := map[uintptr]bool{}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
 		have := hasNilEmbedded(reflect.ValueOf(*cyc), seen)
 
 		// --- Then ---
 		assert.False(t, have)
+	})
+
+	t.Run("embedded pointer at a seen address", func(t *testing.T) {
+		// --- Given ---
+		type outer struct{ X TPromZero }
+		s := &struct {
+			*outer
+			*TPromZero
+		}{outer: &outer{}}
+		s.TPromZero = &s.X
+		seen := map[ptrKey]bool{}
+
+		// --- When ---
+		have := hasNilEmbedded(reflect.ValueOf(*s), seen)
+
+		// --- Then ---
+		assert.True(t, have)
 	})
 }
 
@@ -348,7 +365,7 @@ func Test_hasNilEmbedded_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- Given ---
-			seen := map[uintptr]bool{}
+			seen := map[ptrKey]bool{}
 
 			// --- When ---
 			have := hasNilEmbedded(reflect.ValueOf(tc.val), seen)
