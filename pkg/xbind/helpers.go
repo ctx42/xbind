@@ -131,8 +131,9 @@ func isZeroFields(v reflect.Value) bool {
 }
 
 // hasNilEmbedded returns true if the struct v embeds a nil pointer or
-// interface, directly or through embedded structs and struct pointers. The
-// struct pointers in seen are skipped, so an embedding cycle ends.
+// interface, directly or through embedded structs, struct pointers and the
+// values embedded interfaces hold. The struct pointers in seen are skipped, so
+// an embedding cycle ends.
 func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 	for i := 0; i < v.NumField(); i++ {
 		if !v.Type().Field(i).Anonymous {
@@ -141,6 +142,11 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 		fld := v.Field(i)
 		if isNil(fld) {
 			return true
+		}
+		if fld.Kind() == reflect.Interface {
+			if fld = fld.Elem(); isNil(fld) {
+				return true
+			}
 		}
 		if fld.Kind() == reflect.Pointer {
 			if seen[fld.Pointer()] {
@@ -159,11 +165,18 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 // nilPromoted returns true if calling the method name on v, a struct or a
 // pointer to one, would panic: the method is promoted through a nil embedded
 // interface, through a nil embedded pointer to a type declaring it with a
-// value receiver, or past a nil embedded pointer. A method promoted through a
-// nil embedded pointer to a type declaring it with a pointer receiver is
-// called with a nil receiver, so it returns false, and so does a method the
-// struct type declares.
+// value receiver, or past a nil embedded pointer, either in v or in the value
+// an embedded interface holds. A method promoted through a nil embedded
+// pointer to a type declaring it with a pointer receiver is called with a nil
+// receiver, so it returns false, and so does a method the struct type
+// declares. A nil pointer v counts as one such embedded pointer.
 func nilPromoted(v reflect.Value, name string) bool {
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		// Only the declaring type takes a nil pointer receiver.
+		pth, _ := methodPath(v.Type(), name, map[reflect.Type]bool{})
+		_, val := v.Type().Elem().MethodByName(name)
+		return len(pth) > 0 || val
+	}
 	v = reflect.Indirect(v)
 	if v.Kind() != reflect.Struct || !hasNilEmbedded(v, map[uintptr]bool{}) {
 		return false // With no nil embedded field, no method lookup is needed.
@@ -173,7 +186,8 @@ func nilPromoted(v reflect.Value, name string) bool {
 		v = v.Field(i)
 		switch v.Kind() { //nolint:exhaustive
 		case reflect.Interface:
-			return v.IsNil()
+			// The rest of the path is in the value the interface holds.
+			return v.IsNil() || nilPromoted(v.Elem(), name)
 
 		case reflect.Pointer:
 			if v.IsNil() {

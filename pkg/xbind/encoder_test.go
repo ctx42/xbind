@@ -1200,6 +1200,24 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"i": {"1"}}, dst)
 	})
 
+	t.Run("nil embed behind an embedded interface", func(t *testing.T) {
+		// --- Given ---
+		type wrap = struct{ encoding.TextMarshaler }
+		dst := url.Values{}
+		s := &struct {
+			F wrap `url:"f"`
+			P wrap `url:"p"`
+			I int  `url:"i"`
+		}{F: wrap{TPromZero{}}, P: wrap{(*TTextVal)(nil)}, I: 1}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"i": {"1"}}, dst)
+	})
+
 	t.Run("own method with nil embedded pointer", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

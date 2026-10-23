@@ -328,6 +328,21 @@ func Test_hasNilEmbedded_tabular(t *testing.T) {
 			struct{ *TPromZero }{&TPromZero{Time: &time.Time{}}},
 			false,
 		},
+		{
+			"nil embed in an embedded interface",
+			struct{ encoding.TextMarshaler }{TPromZero{}},
+			true,
+		},
+		{
+			"nil pointer in an embedded interface",
+			struct{ encoding.TextMarshaler }{(*TTextVal)(nil)},
+			true,
+		},
+		{
+			"embedded interface",
+			struct{ encoding.TextMarshaler }{TTextVal('A')},
+			false,
+		},
 	}
 
 	for _, tc := range tt {
@@ -377,6 +392,24 @@ func Test_nilPromoted_tabular(t *testing.T) {
 		{
 			"interface",
 			struct{ encoding.TextMarshaler }{TTextVal('A')},
+			"MarshalText",
+			false,
+		},
+		{
+			"nil embed in an interface",
+			struct{ encoding.TextMarshaler }{TPromZero{}},
+			"MarshalText",
+			true,
+		},
+		{
+			"nil value receiver in an interface",
+			struct{ encoding.TextMarshaler }{(*TTextVal)(nil)},
+			"MarshalText",
+			true,
+		},
+		{
+			"nil pointer receiver in an interface",
+			struct{ encoding.TextMarshaler }{(*TTextPtr)(nil)},
 			"MarshalText",
 			false,
 		},
