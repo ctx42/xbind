@@ -3342,8 +3342,10 @@ func Test_setDst(t *testing.T) {
 		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, "1")
 
 		// --- Then ---
-		want := "expected decoder to return `int` got `string`"
+		want := "invalid type: expected decoder to return `int` got `string`"
 		assert.ErrorEqual(t, want, err)
+		assert.ErrorIs(t, ErrType, err)
+		xrrtest.AssertCode(t, ECInvType, err)
 		assert.True(t, have)
 		assert.Equal(t, 0, s.F)
 	})

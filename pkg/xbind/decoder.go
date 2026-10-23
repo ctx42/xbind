@@ -6,7 +6,6 @@ package xbind
 import (
 	"encoding"
 	"errors"
-	"fmt"
 	"maps"
 	"math"
 	"net/url"
@@ -843,8 +842,9 @@ func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
 		if !vv.IsValid() || !vv.CanConvert(typ) {
 			// This may happen only if decoder returns type which is in
 			// fact not the one it should be decoding.
-			const format = "expected decoder to return %#q got `%T`"
-			return true, fmt.Errorf(format, typ.String(), val)
+			const format = "%w: expected decoder to return %#q got `%T`"
+			code := xrr.WithCode(ECInvType)
+			return true, xrr.Newf(format, ErrType, typ.String(), val, code)
 		}
 		// The destination may be an alias of the type returned by decoder.
 		dst.Set(vv.Convert(typ))
