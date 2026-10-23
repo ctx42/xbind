@@ -164,11 +164,13 @@ func (dec *Decoder) decode(
 ) *xrr.FieldErrors {
 
 	var ers *xrr.FieldErrors
+	keys := make(map[string]bool) // The keys of ers.
 	setErr := func(pth string, err error) {
 		if ers == nil {
 			ers = &xrr.FieldErrors{}
 		}
 		ers.Set(pth, err)
+		keys[pth] = true
 	}
 
 	stt := newState()
@@ -205,7 +207,7 @@ func (dec *Decoder) decode(
 	lvl := newLevel(sv.Type(), dec.tagName())
 	seen := map[ptrKey]bool{}
 	dec.required("", sv, lvl, seen, stt, func(pth string, err error) {
-		if !stt.failed[pth] && (ers == nil || ers.Get(pth) == nil) {
+		if !stt.failed[pth] && !keys[pth] {
 			setErr(pth, err)
 		}
 	})
