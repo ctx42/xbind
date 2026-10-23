@@ -64,6 +64,8 @@ const (
 
 	ECReqStructPtr = "ECReqStructPtr"
 
+	ECReqStruct = "ECReqStruct"
+
 	ECUnkFieldPath = "ECUnkFieldPath"
 
 	// ECDecNotFound represents the missing type decoder error code.
@@ -117,8 +119,13 @@ var (
 	// the query parameters.
 	ErrBind = xrr.New("binding error", ECBinding)
 
-	// ErrReqStructPtr represents the struct pointer required error.
+	// ErrReqStructPtr represents a [Decoder.Decode] destination that is not a
+	// pointer to a struct.
 	ErrReqStructPtr = xrr.New("struct pointer required", ECReqStructPtr)
+
+	// ErrReqStruct represents an [Encoder.Encode] source that is neither a
+	// struct nor a pointer to one.
+	ErrReqStruct = xrr.New("struct or struct pointer required", ECReqStruct)
 
 	// ErrType represents a mismatched field type during binding.
 	ErrType = xrr.New("invalid type", ECInvType)

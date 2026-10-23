@@ -66,16 +66,17 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 }
 
 // Encode encodes the src struct, or a pointer to it, into dst; a nil dst is the
-// [ErrNilDst] error. Each exported field is added under its path; the path of a
-// nested struct field is the dotted list of names leading to it. A [Marshaler]
-// implemented by src, or by a struct embedded in it, encodes the whole struct;
-// an [encoding.TextMarshaler] implemented by src adds its text under the empty
-// key and the fields are not encoded. A nil pointer or interface adds nothing:
-// a nil field has no key, a map entry with a nil key or value is left out, and
-// a nil slice or array element has no value, so the elements after it move up
-// one place when decoded. A pointer to a struct already being encoded, a
-// pointer cycle, is an [ErrCycle] error keyed by the field path of the repeated
-// pointer, and a struct tag of src that does not parse is an [ErrInvTag] error.
+// [ErrNilDst] error and any other src the [ErrReqStruct] error. Each exported
+// field is added under its path; the path of a nested struct field is the
+// dotted list of names leading to it. A [Marshaler] implemented by src, or by a
+// struct embedded in it, encodes the whole struct; an [encoding.TextMarshaler]
+// implemented by src adds its text under the empty key and the fields are not
+// encoded. A nil pointer or interface adds nothing: a nil field has no key, a
+// map entry with a nil key or value is left out, and a nil slice or array
+// element has no value, so the elements after it move up one place when
+// decoded. A pointer to a struct already being encoded, a pointer cycle, is an
+// [ErrCycle] error keyed by the field path of the repeated pointer, and a
+// struct tag of src that does not parse is an [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
@@ -84,7 +85,7 @@ func (enc *Encoder) Encode(dst url.Values, src any) error {
 	}
 	val := reflect.ValueOf(src)
 	if reflect.Indirect(val).Kind() != reflect.Struct {
-		return ErrReqStructPtr
+		return ErrReqStruct
 	}
 	seen := map[reflect.Type]bool{}
 	if err := checkTags("", val.Type(), enc.tagName(), seen); err != nil {

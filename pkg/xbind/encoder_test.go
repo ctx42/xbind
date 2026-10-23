@@ -837,7 +837,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, make(map[int]int))
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrReqStructPtr, err)
+		assert.Same(t, ErrReqStruct, err)
 	})
 
 	t.Run("error - top level marshaler", func(t *testing.T) {
