@@ -1102,6 +1102,40 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 1, dst.Sub.FInt)
 	})
 
+	t.Run("error - required nested struct not set", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			P *TRequired `url:"p,required"`
+			V TRequired  `url:"v,required"`
+		}{}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, url.Values{})
+
+		// --- Then ---
+		want := "" +
+			"p: cannot be blank (ECRequired); " +
+			"v: cannot be blank (ECRequired); " +
+			"v.f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.P)
+	})
+
+	t.Run("required nested struct set by a key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			P *TRequired `url:"p,required"`
+		}{}
+		src := url.Values{"p.f_str": {"a"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "a", dst.P.FStr)
+	})
+
 	t.Run("error - required without tag name", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -1793,6 +1827,30 @@ func Test_Decoder_required_tabular(t *testing.T) {
 			nil,
 		},
 		{"pointer cycle", cyc, nil, []string{"next.req", "req"}},
+		{
+			"required nested struct pointer not set",
+			&struct {
+				P *TRequired `url:"p,required"`
+			}{},
+			nil,
+			[]string{"p"},
+		},
+		{
+			"required nested struct pointer set",
+			&struct {
+				P *TRequired `url:"p,required"`
+			}{P: &TRequired{}},
+			map[string]bool{"p": true, "p.f_str": true},
+			nil,
+		},
+		{
+			"required embedded struct",
+			&struct {
+				TRequired `url:",required"`
+			}{},
+			map[string]bool{"f_str": true},
+			nil,
+		},
 	}
 
 	for _, tc := range tt {

@@ -127,7 +127,15 @@ func (dec *Decoder) decode(
 		if err := setField(dstV, dec.reg, key, vls...); err != nil {
 			setErr(pth, err)
 		}
-		set[res.pth] = true
+		// A key setting a field also sets the structs on its path.
+		for p := res.pth; ; {
+			set[p] = true
+			i := strings.LastIndexByte(p, '.')
+			if i < 0 {
+				break
+			}
+			p = p[:i]
+		}
 	}
 
 	dec.required("", dst, set, map[ptrKey]bool{}, setErr)
@@ -214,10 +222,12 @@ func (dec *Decoder) resolve(
 }
 
 // required sets an [ErrRequired] error, using setErr, for each required field
-// of dst whose path is not in set. A nil struct pointer is an absent struct,
-// so its fields are not checked. Ignored fields and unexported fields, other
-// than embedded structs, are skipped. The seen map holds the struct pointers
-// on the path to dst, so a pointer cycle ends.
+// of dst whose path is not in set; a struct field is set when a field in it
+// is. A nil struct pointer is an absent struct, so its fields are not
+// checked. Ignored fields and unexported fields, other than embedded structs,
+// are skipped; an embedded struct has no path, so its required option is
+// ignored. The seen map holds the struct pointers on the path to dst, so a
+// pointer cycle ends.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
@@ -254,6 +264,8 @@ func (dec *Decoder) required(
 			// not include the name of the embedded struct.
 			if anon {
 				fldPath = prefix
+			} else if tag.Contains("required") && !set[fldPath] {
+				setErr(fldPath, ErrRequired)
 			}
 			val := fld.Value()
 			if val.Kind() != reflect.Pointer {
