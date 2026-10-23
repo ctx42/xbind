@@ -319,6 +319,13 @@ func Test_isEmpty_tabular(t *testing.T) {
 		{"empty chan", reflect.ValueOf(make(chan int, 1)), true},
 		{"zero IsZero", reflect.ValueOf(time.Time{}), true},
 		{"IsZero", reflect.ValueOf(time.Unix(1, 0)), false},
+		{"nil embedded IsZero", reflect.ValueOf(TPromZero{}), true},
+		{"pointer to nil embedded", reflect.ValueOf(&TPromZero{}), true},
+		{
+			"embedded IsZero",
+			reflect.ValueOf(TPromZero{new(time.Unix(1, 0))}),
+			false,
+		},
 		{"empty Valuer", reflect.ValueOf(TValuer("")), true},
 		{"Valuer", reflect.ValueOf(TValuer("a")), false},
 		{"Valuer error", reflect.ValueOf(TValuer("error")), false},

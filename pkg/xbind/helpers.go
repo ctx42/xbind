@@ -154,7 +154,9 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 // returns true or whose [driver.Valuer] value is empty; any other zero value.
 // A bool is never empty. The rules are those of IsEmpty in the
 // github.com/ctx42/verax package. Methods are called only when v can be
-// interfaced.
+// interfaced, and not on a struct embedding a nil pointer or interface, or a
+// pointer or interface to one, whose promoted methods would panic; such a
+// struct is empty when all its fields are zero.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
@@ -167,7 +169,16 @@ func isEmpty(v reflect.Value) bool {
 			return true
 		}
 	}
-	if v.CanInterface() {
+	base := v
+	for base.Kind() == reflect.Interface || base.Kind() == reflect.Pointer {
+		if base.IsNil() {
+			break
+		}
+		base = base.Elem()
+	}
+	nilEmb := base.Kind() == reflect.Struct &&
+		hasNilEmbedded(base, map[uintptr]bool{})
+	if v.CanInterface() && !nilEmb {
 		if zer, ok := v.Interface().(zeroer); ok {
 			return zer.IsZero()
 		}
