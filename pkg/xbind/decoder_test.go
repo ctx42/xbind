@@ -1903,6 +1903,38 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, []TItem{{Size: 1}}, dst.List)
 	})
 
+	t.Run("error - negative index limit", func(t *testing.T) {
+		// --- Given ---
+		dst := &TBox{}
+		src := url.Values{"list[0].size": {"1"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(-1)).Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"list[0].size: invalid value: index 0 over the limit -1 " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.List)
+	})
+
+	t.Run("error - failed value keeps the slice", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			L []int `url:"l"`
+		}{L: []int{5}}
+		src := url.Values{"l": {"1", "x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "l: invalid value: cannot convert `x` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, []int{5}, dst.L)
+	})
+
 	t.Run("error - required inside elements", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {

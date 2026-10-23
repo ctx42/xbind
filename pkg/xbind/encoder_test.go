@@ -1169,6 +1169,39 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
+	t.Run("element of empty omitempty fields not written", func(t *testing.T) {
+		// --- Given ---
+		type item struct {
+			A int `url:"a,omitempty"`
+		}
+		dst := url.Values{}
+		s := struct {
+			L []item `url:"l"`
+		}{L: []item{{}, {A: 1}}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"l[1].a": {"1"}}, dst)
+	})
+
+	t.Run("empty slice element not written", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := struct {
+			L [][]int `url:"l"`
+		}{L: [][]int{{}, {1}}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"l[1]": {"1"}}, dst)
+	})
+
 	t.Run("registered for pointer elements", func(t *testing.T) {
 		// --- Given ---
 		enc := NewEncoder(WithEncFunc(func(pnt *TPoint) (string, error) {
