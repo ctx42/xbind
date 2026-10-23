@@ -72,19 +72,22 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // promotion selects, as in [encoding/json]. Each exported field is added under
 // its path, written as [Decoder.Decode] reads it: struct field names after a
 // dot, or in brackets when they contain one; map keys, and the indexes of slice
-// and array elements that are structs, maps or [Marshaler] values, in brackets
-// ("attr[k]", "list[0].name"); other slice and array elements as values of one
-// key. A map key that is empty or holds a bracket is an [ErrInvValue] error. A
-// [Marshaler] implemented by src, or by a struct embedded in it, encodes the
-// whole struct; [encoding.TextMarshaler] and functions registered with
-// [WithEncFunc] apply only to values with a key, so src and the structs
-// embedded in it are encoded field by field. A nil pointer or interface adds
-// nothing: a nil field has no key, a map entry with a nil key or value is left
-// out, and a nil slice or array element has no value, so the elements after it
-// move up one place when decoded. A pointer to a struct already being encoded,
-// a pointer cycle, is an [ErrCycle] error keyed by the field path of the
-// repeated pointer, and a struct tag of src that does not parse is an
-// [ErrInvTag] error.
+// and array elements other than plain values, such as structs, maps, slices and
+// [Marshaler] values, in brackets ("attr[k]", "list[0].name"); plain values,
+// encoded as one text each, as values of one key. A map key that is empty or
+// holds a bracket is an [ErrInvValue] error. A [Marshaler] implemented by src,
+// or by a struct embedded in it, encodes the whole struct;
+// [encoding.TextMarshaler] and functions registered with [WithEncFunc] apply
+// only to values with a key, so src and the structs embedded in it are encoded
+// field by field. A nil pointer or interface adds nothing: a nil field has no
+// key, a map entry with a nil key or value is left out, and a nil plain value
+// in a slice or array has no value, so the elements after it move up one place
+// when decoded. An indexed element or a map value adding no keys, such as a nil
+// pointer, an empty slice or a struct whose fields are all empty and omitempty,
+// is not written either, so such a map entry, or such an element at the end of
+// a slice, does not decode back. A pointer to a struct already being encoded, a
+// pointer cycle, is an [ErrCycle] error keyed by the field path of the repeated
+// pointer, and a struct tag of src that does not parse is an [ErrInvTag] error.
 // On error, dst keeps the values encoded before the error, which may include
 // some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {

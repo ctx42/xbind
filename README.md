@@ -196,6 +196,11 @@ fmt.Println(qry)
 // attr[color]=red&name=report&page.size=10&tag=a&tag=b
 ```
 
+A slice element, or a map value, that adds no keys, such as a nil pointer or a
+struct whose fields are all empty and `omitempty`, is not written: such a map
+entry, or such an element at the end of a slice, does not decode back, and a nil
+in a slice of plain values moves the values after it up one place.
+
 ### Custom types
 
 A field whose type implements `encoding.TextUnmarshaler` is decoded from a
