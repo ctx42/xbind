@@ -286,17 +286,31 @@ func Test_newLevel_tabular(t *testing.T) {
 	}
 }
 
-func Test_level_names(t *testing.T) {
-	// --- Given ---
-	lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+func Test_level_names_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
 
-	// --- When ---
-	have := lvl.names("a", 1)
+		name string
+		i    int
+		want bool
+	}{
+		{"names the field", "a", 1, true},
+		{"other field", "a", 0, false},
+		{"other name", "b", 1, false},
+	}
 
-	// --- Then ---
-	assert.True(t, have)
-	assert.False(t, lvl.names("a", 0))
-	assert.False(t, lvl.names("b", 1))
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+
+			// --- When ---
+			have := lvl.names(tc.name, tc.i)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_level_embedded(t *testing.T) {

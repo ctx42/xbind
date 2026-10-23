@@ -1861,21 +1861,33 @@ func Test_encSrc(t *testing.T) {
 		assert.Equal(t, "", dst.Encode())
 	})
 
-	t.Run("text encoders not used inline", func(t *testing.T) {
+	t.Run("text marshaler not used inline", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
+		src := reflect.ValueOf(TTextVal('A'))
+
+		// --- When ---
+		have, err := encSrc(dst, "", src, nil, true)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, have)
+		assert.Empty(t, dst)
+	})
+
+	t.Run("registered encoder not used inline", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf(TPoint{})
 		enc := func(reflect.Value) (string, error) { return "point", nil }
 		reg := encReg{reflect.TypeFor[TPoint](): enc}
 
 		// --- When ---
-		hTxt, eTxt := encSrc(dst, "", reflect.ValueOf(TTextVal('A')), nil, true)
-		hReg, eReg := encSrc(dst, "", reflect.ValueOf(TPoint{}), reg, true)
+		have, err := encSrc(dst, "", src, reg, true)
 
 		// --- Then ---
-		assert.NoError(t, eTxt)
-		assert.False(t, hTxt)
-		assert.NoError(t, eReg)
-		assert.False(t, hReg)
+		assert.NoError(t, err)
+		assert.False(t, have)
 		assert.Empty(t, dst)
 	})
 

@@ -164,6 +164,17 @@ func Test_isZero(t *testing.T) {
 		// --- Then ---
 		assert.False(t, have)
 	})
+
+	t.Run("IsZero method on the address", func(t *testing.T) {
+		// --- Given ---
+		val := reflect.ValueOf(&TPtrZero{N: -1}).Elem()
+
+		// --- When ---
+		have := isZero(val)
+
+		// --- Then ---
+		assert.True(t, have)
+	})
 }
 
 func Test_isZero_tabular(t *testing.T) {
@@ -228,8 +239,6 @@ func Test_isZeroFields(t *testing.T) {
 
 		// --- Then ---
 		assert.False(t, have)
-
-		assert.True(t, isZero(val))
 	})
 }
 
