@@ -129,7 +129,9 @@ func (enc *Encoder) encode(
 	lvl level,
 ) error {
 
-	if ok, err := encSrc(dst, field, src, enc.reg); ok {
+	// The src struct and the structs embedded in it are encoded inline.
+	inline := field == "" || lvl.idx != nil
+	if ok, err := encSrc(dst, field, src, enc.reg, inline); ok {
 		return fieldError(field, err)
 	}
 
@@ -232,7 +234,8 @@ type ptrKey struct {
 //
 // It first checks for an encoder registered for the src type, then if src, or
 // its address, implements [Marshaler], then [encoding.TextMarshaler]; lastly,
-// it calls encFor to find an encoder. At the empty prefix only [Marshaler] is
+// it calls encFor to find an encoder. For an inline src, the struct passed to
+// [Encoder.Encode] or a struct embedded in a struct, only [Marshaler] is
 // used. A nil pointer or interface with an encoder adds nothing to dst and
 // returns true.
 func encSrc(
@@ -240,6 +243,7 @@ func encSrc(
 	prefix string,
 	src reflect.Value,
 	reg encReg,
+	inline bool,
 ) (bool, error) {
 
 	// Look into an interface implementing a marshaler for the pointer it
@@ -261,10 +265,9 @@ func encSrc(
 	}
 
 	typ := src.Type()
-	if prefix == "" {
-		// A value at the empty path is the src struct or a struct it embeds,
-		// never nil: only a Marshaler, which adds keys under the prefix,
-		// encodes it.
+	if inline {
+		// An inline value is never nil: only a Marshaler, which adds keys
+		// under the prefix, encodes it.
 		if !typ.Implements(iMarshaler) || !src.CanInterface() {
 			return false, nil
 		}
@@ -328,7 +331,7 @@ func (enc *Encoder) encodeSlice(
 		val := src.Index(i)
 		ipt := prefix + "[" + strconv.Itoa(i) + "]"
 		if value {
-			if ok, err := encSrc(dst, prefix, val, enc.reg); ok {
+			if ok, err := encSrc(dst, prefix, val, enc.reg, false); ok {
 				if err != nil {
 					return xrr.NewFieldError(ipt, err)
 				}

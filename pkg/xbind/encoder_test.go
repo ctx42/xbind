@@ -1312,6 +1312,51 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"name": {"a"}}, dst)
 	})
 
+	t.Run("registered type embedded below the top level", func(t *testing.T) {
+		// --- Given ---
+		type outer struct {
+			TPoint
+			N int `url:"n"`
+		}
+		dst := url.Values{}
+		src := struct {
+			L []outer `url:"l"`
+			F outer   `url:"f"`
+		}{L: []outer{{TPoint{1, 2}, 3}}, F: outer{TPoint{4, 5}, 6}}
+
+		// --- When ---
+		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"l[0].X": {"1"}, "l[0].Y": {"2"}, "l[0].n": {"3"},
+			"f.X": {"4"}, "f.Y": {"5"}, "f.n": {"6"},
+		}
+		assert.Equal(t, want, dst)
+	})
+
+	t.Run("registered unexported embedded type", func(t *testing.T) {
+		// --- Given ---
+		type point struct{ X int }
+		type outer struct {
+			point
+			N int `url:"n"`
+		}
+		fn := func(point) (string, error) { return "p", nil }
+		dst := url.Values{}
+		src := struct {
+			L []outer `url:"l"`
+		}{L: []outer{{point{1}, 2}}}
+
+		// --- When ---
+		err := NewEncoder(WithEncFunc(fn)).Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"l[0].X": {"1"}, "l[0].n": {"2"}}, dst)
+	})
+
 	t.Run("registered struct type at the top level", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -1645,7 +1690,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil)
+		have, err := encSrc(dst, "", src, nil, true)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1665,7 +1710,7 @@ func Test_encSrc(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, reg)
+		have, err := encSrc(dst, "F", src, reg, false)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1680,7 +1725,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil)
+		have, err := encSrc(dst, "", src, nil, true)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "string too long", err)
@@ -1695,7 +1740,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, nil)
+		have, err := encSrc(dst, "F", src, nil, false)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "non-printable ascii character", err)
@@ -1703,15 +1748,15 @@ func Test_encSrc(t *testing.T) {
 		assert.Equal(t, "", dst.Encode())
 	})
 
-	t.Run("text encoders not used at the empty path", func(t *testing.T) {
+	t.Run("text encoders not used inline", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		enc := func(reflect.Value) (string, error) { return "point", nil }
 		reg := encReg{reflect.TypeFor[TPoint](): enc}
 
 		// --- When ---
-		hTxt, eTxt := encSrc(dst, "", reflect.ValueOf(TTextVal('A')), nil)
-		hReg, eReg := encSrc(dst, "", reflect.ValueOf(TPoint{}), reg)
+		hTxt, eTxt := encSrc(dst, "", reflect.ValueOf(TTextVal('A')), nil, true)
+		hReg, eReg := encSrc(dst, "", reflect.ValueOf(TPoint{}), reg, true)
 
 		// --- Then ---
 		assert.NoError(t, eTxt)
@@ -1731,7 +1776,7 @@ func Test_encSrc(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, reg)
+		have, err := encSrc(dst, "F", src, reg, false)
 
 		// --- Then ---
 		assert.ErrorIs(t, errTest, err)
@@ -1797,7 +1842,7 @@ func Test_encSrc_tabular(t *testing.T) {
 			src := reflectkit.GetValue(t, tc.s, "F")
 
 			// --- When ---
-			have, err := encSrc(dst, tc.prefix, src, nil)
+			have, err := encSrc(dst, tc.prefix, src, nil, false)
 
 			// --- Then ---
 			assert.NoError(t, err)
