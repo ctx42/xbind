@@ -689,22 +689,9 @@ func (dec *Decoder) required(
 			continue
 		}
 		anon := fld.IsAnonymous()
-
 		isStruct := indirect(fld.Type()).Kind() == reflect.Struct
-		if anon {
-			// Skip embeddings that are interfaces which we have no way to
-			// set, and unexported embeddings of other types.
-			if fld.Kind() == reflect.Interface {
-				continue
-			}
-			if !fld.IsExported() && !isStruct {
-				continue
-			}
-		} else if !fld.IsExported() {
-			continue
-		}
-
 		name := tag.NameOrField()
+		// The level names no unexported field and no embedded interface.
 		if (!anon || !isStruct) && !lvl.names(name, i) {
 			continue
 		}
