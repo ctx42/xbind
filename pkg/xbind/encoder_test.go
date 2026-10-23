@@ -2100,6 +2100,34 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
+	t.Run("key pointing to nil pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		var ip *int
+		src := reflect.ValueOf(map[**int]string{&ip: "x"})
+
+		// --- When ---
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Empty(t, dst)
+	})
+
+	t.Run("key pointing to pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		ip := new(5)
+		src := reflect.ValueOf(map[**int]string{&ip: "x"})
+
+		// --- When ---
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"M[5]": {"x"}}, dst)
+	})
+
 	t.Run("nil pointer in interface key", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

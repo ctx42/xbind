@@ -375,7 +375,16 @@ func (enc *Encoder) encodeMap(
 
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
-		if isNil(mk) || mk.Kind() == reflect.Interface && isNil(mk.Elem()) {
+		if mk.Kind() == reflect.Interface && !mk.IsNil() {
+			mk = mk.Elem()
+		}
+		// Reduce pointers to pointers to a single pointer.
+		for mk.Kind() == reflect.Pointer && !mk.IsNil() &&
+			mk.Type().Elem().Kind() == reflect.Pointer {
+
+			mk = mk.Elem()
+		}
+		if isNil(mk) {
 			continue // A nil key adds nothing.
 		}
 		key, err := encMapKey(mk, enc.reg)
