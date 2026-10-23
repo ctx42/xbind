@@ -1345,6 +1345,40 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, want, dst)
 	})
 
+	t.Run("registered for interface types", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder(
+			WithEncFunc(func(v any) (string, error) {
+				return fmt.Sprint(v), nil
+			}),
+			WithEncFunc(func(encoding.TextMarshaler) (string, error) {
+				return "text", nil
+			}),
+		)
+		dst := url.Values{}
+		s := &struct {
+			L []any                  `url:"l"`
+			M map[any]int            `url:"m"`
+			T encoding.TextMarshaler `url:"t"`
+		}{
+			L: []any{"a", TItem{Size: 1}},
+			M: map[any]int{TItem{Size: 2}: 1},
+			T: TTextVal('A'),
+		}
+
+		// --- When ---
+		err := enc.Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"l":       {"a", "{1 }"},
+			"m[{2 }]": {"1"},
+			"t":       {"text"},
+		}
+		assert.Equal(t, want, dst)
+	})
+
 	t.Run("containers of structs", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

@@ -300,9 +300,11 @@ func encSrc(
 ) (bool, error) {
 
 	// Look into an interface implementing a marshaler for the pointer it
-	// may hold.
+	// may hold, unless a function is registered for the interface.
 	isItf := src.Kind() == reflect.Interface
-	if isItf && !src.IsNil() && isMarshaler(src.Type()) {
+	if isItf && !src.IsNil() && isMarshaler(src.Type()) &&
+		reg.lookup(src.Type()) == nil {
+
 		src = src.Elem()
 	}
 	// Reduce pointers to pointers to a single pointer.
@@ -378,8 +380,9 @@ func isMarshaler(typ reflect.Type) bool {
 // encodeSlice encodes the src slice or array to dst. Elements encoded as one
 // value (see isValueType) are added as values of the prefix key; any other
 // element, a struct, a map or a [Marshaler], is encoded under the prefix key
-// and its index ("list[0]"). An element of an interface type is told by the
-// value it holds. The est is passed to the encode method.
+// and its index ("list[0]"). An element of an interface type with no
+// registered function is told by the value it holds. The est is passed to the
+// encode method.
 func (enc *Encoder) encodeSlice(
 	dst url.Values,
 	prefix string,
@@ -387,8 +390,10 @@ func (enc *Encoder) encodeSlice(
 	est *encState,
 ) error {
 
-	value := enc.isValueType(src.Type().Elem())
-	itf := src.Type().Elem().Kind() == reflect.Interface
+	et := src.Type().Elem()
+	value := enc.isValueType(et)
+	// A function registered for the interface encodes every value it holds.
+	itf := et.Kind() == reflect.Interface && enc.reg.lookup(et) == nil
 	lvl := enc.elemLevel(src.Type(), est)
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
@@ -435,7 +440,9 @@ func (enc *Encoder) encodeMap(
 	lvl := enc.elemLevel(src.Type(), est)
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
-		if mk.Kind() == reflect.Interface && !mk.IsNil() {
+		// A function registered for the interface takes the key as is.
+		itf := mk.Kind() == reflect.Interface
+		if itf && !mk.IsNil() && enc.reg.lookup(mk.Type()) == nil {
 			mk = mk.Elem()
 		}
 		// Reduce pointers to pointers to a single pointer.
@@ -523,10 +530,12 @@ var errNilKey = errors.New("nil map key")
 // encMapKey encodes the map key to a string. The key must not be nil or an
 // interface holding a nil pointer. A key counting as nil returns errNilKey.
 func encMapKey(key reflect.Value, reg encReg) (string, error) {
-	if key.Kind() == reflect.Interface {
+	efn := reg.lookup(key.Type())
+	if efn == nil && key.Kind() == reflect.Interface {
 		key = key.Elem()
+		efn = reg.lookup(key.Type())
 	}
-	if efn := reg.lookup(key.Type()); efn != nil {
+	if efn != nil {
 		return efn(key)
 	}
 	if key.Kind() != reflect.Pointer &&
@@ -543,8 +552,7 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 		text, err := m.MarshalText()
 		return string(text), err
 	}
-	efn := encFor(typ, reg)
-	if efn == nil {
+	if efn = encFor(typ, reg); efn == nil {
 		return "", encNotFound(typ)
 	}
 	return efn(key)
