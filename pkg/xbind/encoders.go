@@ -116,7 +116,8 @@ func encFloat64(v reflect.Value) (string, error) {
 	return encFloat(v, 64)
 }
 
-// encString encodes a string [reflect.Value] to a string.
+// encString returns the string v holds.
+// It panics if the kind of v is not String.
 func encString(v reflect.Value) (string, error) {
 	return v.String(), nil
 }
