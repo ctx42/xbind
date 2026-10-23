@@ -2076,7 +2076,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.tSelfEmb.tSelfEmb)
 	})
 
-	t.Run("error - unexported nil pointer in recursive struct", func(t *testing.T) {
+	t.Run("error - unexported pointer in recursive struct", func(t *testing.T) {
 		// --- Given ---
 		dst := &TUnexpNode{tStr: &tStr{}}
 		src := url.Values{
