@@ -3208,6 +3208,32 @@ func Test_setSliceOrArray(t *testing.T) {
 		assert.ErrorEqual(t, "invalid value: too many values for an array", err)
 		xrrtest.AssertCode(t, ECInvValue, err)
 	})
+
+	t.Run("error - slice keeps its value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F []int }{F: []int{5}}
+		dst := mirror.NewStructValue(s).FieldByName("F").Value()
+
+		// --- When ---
+		err := setSliceOrArray(dst, nil, "1", "x")
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
+		assert.Equal(t, []int{5}, s.F)
+	})
+
+	t.Run("error - array keeps its value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F [3]int }{F: [3]int{7, 8, 9}}
+		dst := mirror.NewStructValue(s).FieldByName("F").Value()
+
+		// --- When ---
+		err := setSliceOrArray(dst, nil, "1", "x")
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
+		assert.Equal(t, [3]int{7, 8, 9}, s.F)
+	})
 }
 
 func Test_decKey(t *testing.T) {

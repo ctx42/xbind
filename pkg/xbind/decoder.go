@@ -845,19 +845,17 @@ func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
 // in vls will be decoded based on the array or slice type and set. A slice is
 // replaced by a new one holding the values. An array gets the values on
 // indexes in the same order as in vls; the elements past the values are
-// zeroed.
+// zeroed. The dst is set only when every value decodes.
 func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 	et := dst.Type().Elem() // Element type.
+	tmp := reflect.New(dst.Type()).Elem()
 	if dst.Kind() == reflect.Array {
 		if dst.Len() < len(vls) {
 			const format = "%w: too many values for an array"
 			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 		}
-		for i := len(vls); i < dst.Len(); i++ {
-			dst.Index(i).SetZero()
-		}
 	} else {
-		dst.Set(reflect.MakeSlice(dst.Type(), 0, len(vls)))
+		tmp.Set(reflect.MakeSlice(dst.Type(), 0, len(vls)))
 	}
 
 	for i, val := range vls {
@@ -872,12 +870,13 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 		if et.Kind() != reflect.Pointer {
 			ne = ne.Elem() // Slice element is not a pointer type.
 		}
-		if dst.Kind() == reflect.Slice {
-			dst.Set(reflect.Append(dst, ne))
+		if tmp.Kind() == reflect.Slice {
+			tmp.Set(reflect.Append(tmp, ne))
 		} else {
-			dst.Index(i).Set(ne)
+			tmp.Index(i).Set(ne)
 		}
 	}
+	dst.Set(tmp)
 	return nil
 }
 
