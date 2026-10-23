@@ -1484,6 +1484,43 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 0, dst.M)
 	})
 
+	t.Run("error - negative zero map key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[float64]string `url:"m"`
+		}{}
+		src := url.Values{"m[-0]": {"a"}, "m[0]": {"b"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "m[0]: invalid value: another key sets the value (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, map[float64]string{0: "a"}, dst.M)
+	})
+
+	t.Run("map keys printing alike", func(t *testing.T) {
+		// --- Given ---
+		type key struct{ A, B string }
+		dec := NewDecoder(WithDecFunc(func(s string) (key, error) {
+			a, b, _ := strings.Cut(s, "|")
+			return key{a, b}, nil
+		}))
+		dst := &struct {
+			M map[key]int `url:"m"`
+		}{}
+		src := url.Values{"m[a b|]": {"1"}, "m[a|b ]": {"2"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := map[key]int{{"a b", ""}: 1, {"a", "b "}: 2}
+		assert.Equal(t, want, dst.M)
+	})
+
 	t.Run("map of plain values takes the rest of a key", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -3253,6 +3290,15 @@ func Test_decKey(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, 42, *have.Interface().(*int))
+	})
+
+	t.Run("negative zero key", func(t *testing.T) {
+		// --- When ---
+		have, err := decKey(reflect.TypeFor[float64](), nil, "-0")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, math.Signbit(have.Float()))
 	})
 
 	t.Run("error - key", func(t *testing.T) {

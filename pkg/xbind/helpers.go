@@ -44,8 +44,9 @@ func fieldPath(pref, name string) string {
 }
 
 // keyText returns the text of the map key, as the encoder writes it when it
-// can, else as [fmt.Sprint] prints it.
-func keyText(key reflect.Value) string {
+// can, else as the format verb of [fmt] prints it; the Go syntax of "%#v"
+// quotes strings, so keys printing alike stay apart.
+func keyText(key reflect.Value, format string) string {
 	if key.Kind() == reflect.Interface && !key.IsNil() {
 		key = key.Elem()
 	}
@@ -54,7 +55,7 @@ func keyText(key reflect.Value) string {
 			return txt
 		}
 	}
-	return fmt.Sprint(key.Interface())
+	return fmt.Sprintf(format, key.Interface())
 }
 
 // isNaN returns true if v is a float NaN, or a pointer to one.

@@ -408,12 +408,13 @@ func newState() *state {
 
 // entry returns the entry of the map at the canonical path pth that the
 // decoded key names; txt is the src text of the key. Keys decoding to equal
-// values, by their encoded text, name one entry: its key is the first one
-// decoded, so pointer keys and keys holding pointers find it again, and its
-// text is the encoded text or, when the key type has no encoder, the src
-// text of the first key.
+// values, by their encoded text or, when the key type has no encoder, by
+// their Go syntax, name one entry: its key is the first one decoded, so
+// pointer keys and keys holding pointers find it again, and its text is the
+// encoded text or, when the key type has no encoder, the src text of the
+// first key.
 func (stt *state) entry(pth string, key reflect.Value, txt string) mapEntry {
-	id := pth + "[" + keyText(key) + "]"
+	id := pth + "[" + keyText(key, "%#v") + "]"
 	if ent, ok := stt.entries[id]; ok {
 		return ent
 	}
@@ -716,8 +717,9 @@ func (dec *Decoder) requiredIn(
 
 	case reflect.Map:
 		for it := val.MapRange(); it.Next(); {
-			txt := keyText(it.Key())
-			if ent, ok := stt.entries[pth+"["+txt+"]"]; ok {
+			txt := keyText(it.Key(), "%v")
+			id := pth + "[" + keyText(it.Key(), "%#v") + "]"
+			if ent, ok := stt.entries[id]; ok {
 				txt = ent.text // The key text the src key gave.
 			}
 			kpt := pth + "[" + txt + "]"
@@ -880,7 +882,8 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 	return nil
 }
 
-// decKey returns a map key of the kt type decoded from key.
+// decKey returns a map key of the kt type decoded from key. A float key of -0
+// is returned as 0, the same key in a map.
 func decKey(kt reflect.Type, reg decReg, key string) (reflect.Value, error) {
 	nk := reflect.New(indirect(kt))
 	ok, err := setDst(nk.Elem(), reg, key)
@@ -889,6 +892,9 @@ func decKey(kt reflect.Type, reg decReg, key string) (reflect.Value, error) {
 	}
 	if err != nil {
 		return reflect.Value{}, err
+	}
+	if val := nk.Elem(); val.CanFloat() && val.Float() == 0 {
+		val.SetFloat(0) // A -0 key names the entry of 0.
 	}
 	if kt.Kind() != reflect.Pointer {
 		nk = nk.Elem() // Map key is not a pointer type.

@@ -99,20 +99,27 @@ func Test_keyText_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
 
-		key  reflect.Value
-		want string
+		key    reflect.Value
+		format string
+		want   string
 	}{
-		{"int", reflect.ValueOf(7), "7"},
-		{"text marshaler", reflect.ValueOf(TTextVal('A')), "A"},
-		{"no encoder", reflect.ValueOf(TItem{Size: 1}), "{1 }"},
-		{"nil pointer", reflect.ValueOf((*int)(nil)), "<nil>"},
-		{"nil pointer in interface", nilItf, "<nil>"},
+		{"int", reflect.ValueOf(7), "%v", "7"},
+		{"text marshaler", reflect.ValueOf(TTextVal('A')), "%#v", "A"},
+		{"no encoder", reflect.ValueOf(TItem{Size: 1}), "%v", "{1 }"},
+		{
+			"no encoder Go syntax",
+			reflect.ValueOf(TItem{Size: 1}),
+			"%#v",
+			`xbind.TItem{Size:1, Name:""}`,
+		},
+		{"nil pointer", reflect.ValueOf((*int)(nil)), "%v", "<nil>"},
+		{"nil pointer in interface", nilItf, "%v", "<nil>"},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := keyText(tc.key)
+			have := keyText(tc.key, tc.format)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
