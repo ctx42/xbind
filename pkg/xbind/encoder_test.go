@@ -1246,6 +1246,23 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
+	t.Run("error - map key holding NaN", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			M map[TFltKey]string
+		}{M: map[TFltKey]string{{F: math.NaN()}: "x"}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		want := "M: invalid value: NaN map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Empty(t, dst)
+	})
+
 	t.Run("element adding no keys", func(t *testing.T) {
 		// --- Given ---
 		type item struct {

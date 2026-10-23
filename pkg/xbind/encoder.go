@@ -77,24 +77,24 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // and array elements other than plain values, such as structs, maps, slices and
 // [Marshaler] values, in brackets ("attr[k]", "list[0].name"); plain values,
 // encoded as one text each, as values of one key. A map key that is empty,
-// holds a bracket or is a NaN is an [ErrInvValue] error, and so are two keys of
-// one map encoded to one text; the entries of a map are encoded in the order of
-// their key texts. A [Marshaler] implemented by src, or by a struct embedded in
-// it, encodes the whole struct; [encoding.TextMarshaler] and functions
-// registered with [WithEncFunc] apply only to values with a key, so src and the
-// structs embedded in it are encoded field by field. A field, slice or array
-// element, or map value of a type with no encoder, such as a func, a chan, an
-// interface other than [Marshaler] and [encoding.TextMarshaler] or a pointer to
-// a pointer to a struct, is an [ErrEncNotFound] error, even when nil. Any other
-// nil pointer or interface adds nothing: a nil field has no key, a map entry
-// with a nil key or value is left out, and a nil plain value in a slice or
-// array has no value, so the elements after it move up one place when decoded.
-// A value whose [Marshaler] or [encoding.TextMarshaler] method the call would
-// reach through a nil embedded field counts as nil too (see [Marshaler]).
-// An indexed element or a map value adding no keys, such as a nil pointer, an
-// empty slice or a struct whose fields are all empty and omitempty, is not
-// written either, so such a map entry, or such an element at the end of a
-// slice, does not decode back. A pointer to a struct, or a map or slice,
+// holds a bracket, or is or holds a NaN is an [ErrInvValue] error, and so are
+// two keys of one map encoded to one text; the entries of a map are encoded in
+// the order of their key texts. A [Marshaler] implemented by src, or by a
+// struct embedded in it, encodes the whole struct; [encoding.TextMarshaler] and
+// functions registered with [WithEncFunc] apply only to values with a key, so
+// src and the structs embedded in it are encoded field by field. A field, slice
+// or array element, or map value of a type with no encoder, such as a func, a
+// chan, an interface other than [Marshaler] and [encoding.TextMarshaler] or a
+// pointer to a pointer to a struct, is an [ErrEncNotFound] error, even when
+// nil. Any other nil pointer or interface adds nothing: a nil field has no key,
+// a map entry with a nil key or value is left out, and a nil plain value in a
+// slice or array has no value, so the elements after it move up one place when
+// decoded. A value whose [Marshaler] or [encoding.TextMarshaler] method the
+// call would reach through a nil embedded field counts as nil too (see
+// [Marshaler]). An indexed element or a map value adding no keys, such as a nil
+// pointer, an empty slice or a struct whose fields are all empty and omitempty,
+// is not written either, so such a map entry, or such an element at the end of
+// a slice, does not decode back. A pointer to a struct, or a map or slice,
 // already being encoded, a cycle, is an [ErrCycle] error keyed by the field
 // path of the repeated value, and a struct tag of src that does not parse, or
 // that names a field with a bracket ("ids[]") or an embedded struct, is an
@@ -421,9 +421,10 @@ func (enc *Encoder) encodeSlice(
 
 // encodeMap encodes the src map to dst, each value under the prefix key and its
 // map key ("attr[k]"). The keys are encoded with [encoding.TextMarshaler] or
-// the base type encoders; an empty key, one with a bracket, a NaN, and two keys
-// encoded to one text are errors. The entries are encoded in the order of their
-// key texts. The est is passed to the encode method.
+// the base type encoders; an empty key, one with a bracket, one that is or
+// holds a NaN, and two keys encoded to one text are errors. The entries are
+// encoded in the order of their key texts. The est is passed to the encode
+// method.
 func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
@@ -470,7 +471,7 @@ func (enc *Encoder) encodeMap(
 	for i, pr := range prs {
 		var format string
 		switch {
-		case isNaN(pr.mk):
+		case isNaNKey(pr.mk):
 			format = "%w: NaN map key" // Decode rejects it.
 
 		case pr.key == "":

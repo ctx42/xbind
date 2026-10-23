@@ -560,7 +560,7 @@ func (dec *Decoder) apply(
 		if err != nil {
 			return err
 		}
-		if isNaN(key) || key.Kind() != reflect.Pointer && !key.Equal(key) {
+		if isNaNKey(key) {
 			// No lookup finds a key holding a NaN, so its entry cannot be
 			// read back.
 			const format = "%w: NaN map key"

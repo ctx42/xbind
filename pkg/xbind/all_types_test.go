@@ -38,6 +38,7 @@ var (
 	_ encoding.TextUnmarshaler = (*TOwnUnm)(nil)
 	_ encoding.TextMarshaler   = TLevel(0)
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
+	_ encoding.TextMarshaler   = TFltKey{}
 )
 
 // TString is a test struct with string fields.
@@ -490,6 +491,13 @@ func (tdu TDual) MarshalText() ([]byte, error) { return []byte(tdu), nil }
 func (tdu TDual) MarshalValues(dst url.Values, prefix string) error {
 	dst.Add(prefix+".v", string(tdu))
 	return nil
+}
+
+// TFltKey is a map key type holding a float, encoded as the float text.
+type TFltKey struct{ F float64 }
+
+func (tfk TFltKey) MarshalText() ([]byte, error) {
+	return []byte(strconv.FormatFloat(tfk.F, 'f', -1, 64)), nil
 }
 
 // TItem is a struct used as an element of maps, slices and arrays.

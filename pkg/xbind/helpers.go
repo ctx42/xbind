@@ -71,6 +71,12 @@ func isNaN(v reflect.Value) bool {
 	}
 }
 
+// isNaNKey returns true if no map lookup finds the map key: it is a float
+// NaN, or a pointer to one, or a value holding one.
+func isNaNKey(key reflect.Value) bool {
+	return isNaN(key) || key.Kind() != reflect.Pointer && !key.Equal(key)
+}
+
 // zeroer is implemented by types reporting whether they are zero.
 type zeroer interface{ IsZero() bool }
 

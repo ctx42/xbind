@@ -154,6 +154,32 @@ func Test_isNaN_tabular(t *testing.T) {
 	}
 }
 
+func Test_isNaNKey_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		val  any
+		want bool
+	}{
+		{"NaN", math.NaN(), true},
+		{"pointer to NaN", new(math.NaN()), true},
+		{"struct holding NaN", TFltKey{F: math.NaN()}, true},
+		{"array holding NaN", [1]float64{math.NaN()}, true},
+		{"number", 1.5, false},
+		{"struct", TFltKey{F: 1}, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isNaNKey(reflect.ValueOf(tc.val))
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_isZero(t *testing.T) {
 	t.Run("struct read through unexported field", func(t *testing.T) {
 		// --- Given ---
