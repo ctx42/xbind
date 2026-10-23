@@ -69,23 +69,17 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // [xrr.FieldErrors] keyed by the src keys; the other values are still set.
 // Decoded slice elements are appended to the elements dst already has; array
 // elements past the decoded values keep their values. A nil pointer to a
-// nested struct is allocated even when src has no key for it, unless the
-// struct type encloses the field (a recursive type): such a struct is
-// allocated only on the path of a src key, and its required fields are not
-// checked. A src key leading into its embedded nil pointer to a struct, which
-// the decoder cannot allocate because the field is unexported, is an
-// [ErrUnexported] field error. Pointers to pointers to structs are not
-// supported.
+// nested struct is allocated only when a src key leads into it; the required
+// fields of a nil struct pointer, an absent struct, are not checked. A src
+// key leading into an embedded nil pointer to a struct, which the decoder
+// cannot allocate because the field is unexported, is an [ErrUnexported]
+// field error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
 		return ErrReqStructPtr
 	}
-	ers, err := dec.decode(sv, src)
-	if err != nil {
-		return err
-	}
-	return ers.Filter()
+	return dec.decode(sv, src).Filter()
 }
 
 // tagName returns the name of the struct tag the decoder reads.
@@ -96,12 +90,12 @@ func (dec *Decoder) tagName() string {
 	return dec.tag
 }
 
-// decode decodes src to the dst struct. The field errors describe src values;
-// the error reports a dst type the decoder cannot walk.
+// decode decodes src to the dst struct and returns the errors of the src
+// values and of the required fields src does not set.
 func (dec *Decoder) decode(
 	dst *mirror.StructValue,
 	src url.Values,
-) (*xrr.FieldErrors, error) {
+) *xrr.FieldErrors {
 
 	var ers *xrr.FieldErrors
 	setErr := func(pth string, err error) {
@@ -111,13 +105,8 @@ func (dec *Decoder) decode(
 		ers.Set(pth, err)
 	}
 
-	// Recursively get a flattened version of all fields in dst type.
-	desc := make(map[string]*fDesc)
-	if err := dec.fields("", desc, dst, nil); err != nil {
-		return nil, err
-	}
-
 	// Go over src keys and match them with struct fields.
+	set := make(map[string]bool) // Paths of the fields src sets.
 	for pth, vls := range src {
 		res := dec.resolve("", strings.Split(pth, "."), dst, nil)
 		if res.ignored {
@@ -138,18 +127,11 @@ func (dec *Decoder) decode(
 		if err := setField(dstV, dec.reg, key, vls...); err != nil {
 			setErr(pth, err)
 		}
-		if dsc, ok := desc[res.pth]; ok {
-			dsc.set = true
-		}
+		set[res.pth] = true
 	}
 
-	// Check all required fields were set.
-	for pth, dsc := range desc {
-		if dsc.required && !dsc.set {
-			setErr(pth, ErrRequired)
-		}
-	}
-	return ers, nil
+	dec.required("", dst, set, map[ptrKey]bool{}, setErr)
+	return ers
 }
 
 // resolve takes a path to a field and returns its value and its path. The
@@ -178,9 +160,8 @@ func (dec *Decoder) resolve(
 			val := fv.Value()
 			unexported := val.Kind() == reflect.Pointer && val.IsNil()
 			if unexported {
-				// An unexported pointer the fields method did not reject, in
-				// a struct allocated for a recursive type. A throwaway value
-				// tells whether the path leads into it.
+				// An unexported pointer, which cannot be allocated. A
+				// throwaway value tells whether the path leads into it.
 				tmp := reflect.New(val.Type().Elem()).Interface()
 				sv = mirror.NewStructValue(tmp)
 			}
@@ -232,29 +213,25 @@ func (dec *Decoder) resolve(
 	return result{ignored: ignored}
 }
 
-// fields populates m with descriptions of the fields of dst, descending into
-// nested structs; the map keys are the paths to the fields in dot notation.
-// Ignored fields and unexported fields, other than embedded structs, are
-// skipped. The outer types are the structs enclosing dst; a struct field of
-// one of them, or of the dst type, is neither allocated nor walked, so a
-// recursive type ends. It returns an error wrapping [ErrUnexported] for a nil
-// embedded struct pointer it cannot allocate because the embedded type is
-// unexported.
-func (dec *Decoder) fields(
+// required sets an [ErrRequired] error, using setErr, for each required field
+// of dst whose path is not in set. A nil struct pointer is an absent struct,
+// so its fields are not checked. Ignored fields and unexported fields, other
+// than embedded structs, are skipped. The seen map holds the struct pointers
+// on the path to dst, so a pointer cycle ends.
+func (dec *Decoder) required(
 	prefix string,
-	m map[string]*fDesc,
 	dst *mirror.StructValue,
-	outer []reflect.Type,
-) error {
+	set map[string]bool,
+	seen map[ptrKey]bool,
+	setErr func(string, error),
+) {
 
-	outer = append(outer, dst.Type())
 	for i := 0; i < dst.NumField(); i++ {
 		fld := dst.FieldByIndex(i)
 		tag, _ := fld.Tag(dec.tagName()) // A malformed tag reads as no tag.
 		if tag.IsIgnored() {
 			continue
 		}
-		req := tag.Contains("required")
 		anon := fld.IsAnonymous()
 
 		isStruct := indirect(fld.Type()).Kind() == reflect.Struct
@@ -271,42 +248,31 @@ func (dec *Decoder) fields(
 			continue
 		}
 
-		if isStruct {
+		fldPath := buildPath(prefix, tag.NameOrField())
+		if isStruct && (anon || !dec.isLeaf(fld.Value())) {
 			// The path to a field that comes from an embedded struct does
-			// not include the name of the embedded struct, and its fields
-			// are walked unless its type encloses it (see resolve).
-			fldPath := prefix
-			if !anon {
-				fldPath = buildPath(prefix, tag.NameOrField())
-				if dec.isLeaf(fld.Value()) {
-					m[fldPath] = &fDesc{required: req}
-					continue
-				}
+			// not include the name of the embedded struct.
+			if anon {
+				fldPath = prefix
 			}
-			if slices.Contains(outer, indirect(fld.Type())) {
-				continue // A recursive type.
+			val := fld.Value()
+			if val.Kind() != reflect.Pointer {
+				dec.required(fldPath, fld.StructValue(), set, seen, setErr)
+				continue
 			}
-			if val := fld.Value(); val.Kind() == reflect.Pointer &&
-				val.IsNil() && !val.CanSet() {
-
-				name := buildPath(prefix, tag.NameOrField())
-				return xrr.New(name, ECUnexported, xrr.WithCause(ErrUnexported))
+			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
+			if val.IsNil() || seen[key] {
+				continue // An absent struct, or a pointer cycle.
 			}
-
-			nfv := fld.NewIfNil().StructValue()
-			if err := dec.fields(fldPath, m, nfv, outer); err != nil {
-				return err
-			}
+			seen[key] = true
+			dec.required(fldPath, fld.StructValue(), set, seen, setErr)
+			delete(seen, key)
 			continue
 		}
-
-		if tag.IsZero() {
-			continue
+		if tag.Contains("required") && !set[fldPath] {
+			setErr(fldPath, ErrRequired)
 		}
-		fldPath := buildPath(prefix, tag.Name())
-		m[fldPath] = &fDesc{required: req}
 	}
-	return nil
 }
 
 // isLeaf returns true if the struct, or pointer to a struct, val is set as a
@@ -348,12 +314,6 @@ func (res result) isComplete() bool {
 		return strings.Join(res.remainder, ".") != ""
 	}
 	return len(res.remainder) == 0
-}
-
-// fDesc represents a struct field description.
-type fDesc struct {
-	required bool // Is the field required?
-	set      bool // Field set during decoding.
 }
 
 // isUnmarshal returns true if dst is addressable and its address implements

@@ -7,11 +7,9 @@ import (
 	"encoding"
 	"errors"
 	"io"
-	"maps"
 	"net/url"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -464,17 +462,18 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldIs(t, "f_itf", ErrRequired, err)
 	})
 
-	t.Run("error - unexported struct pointer", func(t *testing.T) {
+	t.Run("error - key into unexported nil pointer", func(t *testing.T) {
 		// --- Given ---
 		dst := &TUnexpPtr{}
-		src := url.Values{"f_int": {"1"}}
+		src := url.Values{"f_int": {"1"}, "f_str": {"a"}}
 
 		// --- When ---
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrUnexported, err)
-		assert.Equal(t, 0, dst.FInt)
+		want := "f_str: unexported field (ECUnexported)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, 1, dst.FInt)
 		assert.Nil(t, dst.tStr)
 	})
 
@@ -791,13 +790,11 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		xrrtest.AssertFieldCnt(t, 2, err)
+		xrrtest.AssertFieldCnt(t, 1, err)
 		xrrtest.AssertFieldIs(t, "sub0.f_str", ErrRequired, err)
-		xrrtest.AssertFieldIs(t, "sub1.f_str", ErrRequired, err)
 		assert.Equal(t, "", dst.Sub0.FStr)
 		assert.Equal(t, 123, dst.Sub0.FInt)
-		assert.Equal(t, "", dst.Sub1.FStr)
-		assert.Equal(t, 0, dst.Sub1.FInt)
+		assert.Nil(t, dst.Sub1)
 	})
 
 	t.Run("error - unknown keys not allowed by default", func(t *testing.T) {
@@ -1053,19 +1050,69 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldIs(t, "f", ErrRequired, err)
 	})
 
-	t.Run("error - nested nil embedded unexported pointer", func(t *testing.T) {
+	t.Run("nested unexported nil pointer", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
 			Sub TUnexpPtr `url:"sub"`
 		}{}
-		src := url.Values{}
+		src := url.Values{"sub.f_int": {"1"}}
 
 		// --- When ---
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrUnexported, err)
-		assert.ErrorEqual(t, "sub.tStr: unexported field", err)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, dst.Sub.FInt)
+		assert.Nil(t, dst.Sub.tStr)
+	})
+
+	t.Run("nil nested pointer is not allocated", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			Name string     `url:"name"`
+			Sub  *TRequired `url:"sub"`
+		}{}
+		src := url.Values{"name": {"a"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "a", dst.Name)
+		assert.Nil(t, dst.Sub)
+	})
+
+	t.Run("error - required in present nested struct", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			Sub *TRequired `url:"sub"`
+			Val TRequired  `url:"val"`
+		}{}
+		src := url.Values{"sub.f_int": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"sub.f_str: cannot be blank (ECRequired); " +
+			"val.f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, 1, dst.Sub.FInt)
+	})
+
+	t.Run("error - required without tag name", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			F string `url:",required"`
+		}{}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, url.Values{})
+
+		// --- Then ---
+		xrrtest.AssertFieldsEqual(t, "F: cannot be blank (ECRequired)", err)
 	})
 
 	t.Run("unexported field does not hide a tagged field", func(t *testing.T) {
@@ -1126,7 +1173,9 @@ func Test_Decoder_Decode(t *testing.T) {
 			"val":           {"1"},
 			"req":           {"r"},
 			"next.val":      {"2"},
+			"next.req":      {""},
 			"next.next.val": {"3"},
+			"next.next.req": {""},
 		}
 
 		// --- When ---
@@ -1137,9 +1186,22 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 1, dst.Val)
 		assert.Equal(t, "r", dst.Req)
 		assert.Equal(t, 2, dst.Next.Val)
-		assert.Equal(t, "", dst.Next.Req)
 		assert.Equal(t, 3, dst.Next.Next.Val)
 		assert.Nil(t, dst.Next.Next.Next)
+	})
+
+	t.Run("error - required in recursive struct", func(t *testing.T) {
+		// --- Given ---
+		dst := &TNode{}
+		src := url.Values{"req": {"r"}, "next.val": {"2"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "next.req: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, 2, dst.Next.Val)
 	})
 
 	t.Run("recursive struct is not allocated", func(t *testing.T) {
@@ -1680,174 +1742,79 @@ func Test_Decoder_resolve(t *testing.T) {
 	})
 }
 
-func Test_Decoder_fields(t *testing.T) {
-	t.Run("simple struct", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TString{})
+func Test_Decoder_required_tabular(t *testing.T) {
+	cyc := &TNode{}
+	cyc.Next = cyc
 
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
+	tt := []struct {
+		testN string
 
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		want := []string{
-			"f_a_p_str|false",
-			"f_a_str|false",
-			"f_m_int_str|false",
-			"f_p_str|false",
-			"f_s_p_str|false",
-			"f_s_str|false",
-			"f_str|false",
-		}
-		assert.Equal(t, want, have)
-	})
+		dst  any
+		set  map[string]bool
+		want []string
+	}{
+		{"not set", &TRequired{}, nil, []string{"f_str"}},
+		{"set", &TRequired{}, map[string]bool{"f_str": true}, nil},
+		{"leaf struct", &TComplex{}, nil, []string{"f_itf"}},
+		{"mixed struct", &TMixed{}, nil, []string{"f_str"}},
+		{"not exported embedded", &TNotExpEmb{}, nil, []string{"f_str"}},
+		{"embedded struct", &struct{ TRequired }{}, nil, []string{"f_str"}},
+		{
+			"nested struct value",
+			&struct {
+				V TRequired `url:"v"`
+			}{},
+			nil,
+			[]string{"v.f_str"},
+		},
+		{
+			"nil nested struct pointer",
+			&struct {
+				P *TRequired `url:"p"`
+			}{},
+			nil,
+			nil,
+		},
+		{
+			"nested struct pointer",
+			&struct {
+				P *TRequired `url:"p"`
+			}{P: &TRequired{}},
+			nil,
+			[]string{"p.f_str"},
+		},
+		{
+			"ignored and unexported fields",
+			&struct {
+				A string `url:"-,required"`
+				b string `url:"b,required"`
+			}{},
+			nil,
+			nil,
+		},
+		{"pointer cycle", cyc, nil, []string{"next.req", "req"}},
+	}
 
-	t.Run("struct with aliases", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TAliases{})
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			var have []string
+			setErr := func(pth string, _ error) { have = append(have, pth) }
 
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
+			// --- When ---
+			NewDecoder().required(
+				"",
+				mirror.NewStructValue(tc.dst),
+				tc.set,
+				map[ptrKey]bool{},
+				setErr,
+			)
 
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		want := []string{
-			"f_flt_alias|false",
-			"f_int_alias|false",
-			"f_s_flt_alias|false",
-			"f_s_int_alias|false",
-			"f_s_str_alias|false",
-			"f_str_alias|false",
-		}
-		assert.Equal(t, want, have)
-	})
-
-	t.Run("embedded structs", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TMultiEmbedded{})
-
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
-
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		want := []string{
-			"f_a_p_str|false",
-			"f_a_str|false",
-			"f_flt_alias|false",
-			"f_int_alias|false",
-			"f_m_int_str|false",
-			"f_p_str|false",
-			"f_s_flt_alias|false",
-			"f_s_int_alias|false",
-			"f_s_p_str|false",
-			"f_s_str_alias|false",
-			"f_s_str|false",
-			"f_str_alias|false",
-			"f_str|false",
-		}
-		assert.Equal(t, want, have)
-	})
-
-	t.Run("mixed struct", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TMixed{})
-
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
-
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		want := []string{
-			"f_int|false",
-			"f_mix_int|false",
-			"f_mix_str|false",
-			"f_mix_time|false",
-			"f_str|true",
-		}
-		assert.Equal(t, want, have)
-	})
-
-	t.Run("with not exported embedded", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TNotExpEmb{})
-
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
-
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		want := []string{
-			"f_int|false",
-			"f_mix_str|false",
-			"f_str|true",
-		}
-		assert.Equal(t, want, have)
-	})
-
-	t.Run("error - unexported struct pointer", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		sv := mirror.NewStructValue(&TUnexpPtr{})
-
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
-
-		// --- Then ---
-		assert.ErrorIs(t, ErrUnexported, err)
-		assert.ErrorEqual(t, "tStr: unexported field", err)
-		xrrtest.AssertCode(t, ECUnexported, err)
-	})
-
-	t.Run("recursive struct", func(t *testing.T) {
-		// --- Given ---
-		dsc := map[string]*fDesc{}
-		s := &TNode{}
-		sv := mirror.NewStructValue(s)
-
-		// --- When ---
-		err := NewDecoder().fields("", dsc, sv, nil)
-
-		// --- Then ---
-		assert.NoError(t, err)
-		var have []string
-		for f := range maps.Keys(dsc) {
-			have = append(have, f+"|"+strconv.FormatBool(dsc[f].required))
-		}
-		slices.Sort(have)
-		assert.Equal(t, []string{"req|true", "val|false"}, have)
-		assert.Nil(t, s.Next)
-	})
+			// --- Then ---
+			slices.Sort(have)
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_Decoder_isLeaf_tabular(t *testing.T) {
