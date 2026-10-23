@@ -342,7 +342,7 @@ func Test_UnmarshalJSONReader(t *testing.T) {
 	})
 }
 
-func Test_UnmarshalJSONr_tabular(t *testing.T) {
+func Test_UnmarshalJSONReader_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
 
