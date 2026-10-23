@@ -210,12 +210,14 @@ func Test_newLevel_tabular(t *testing.T) {
 		testN string
 
 		typ  reflect.Type
-		want map[string][]int
+		wVis map[string][]int
+		wIgn map[string]bool
 	}{
 		{
 			"fields",
 			reflect.TypeFor[TNode](),
 			map[string][]int{"val": {0}, "req": {1}, "next": {2}},
+			map[string]bool{},
 		},
 		{
 			"outer field shadows embedded",
@@ -224,15 +226,32 @@ func Test_newLevel_tabular(t *testing.T) {
 				FStr string `url:"f_str"`
 			}](),
 			map[string][]int{"f_str": {1}, "f_int": {0, 1}},
+			map[string]bool{},
 		},
-		{"ambiguous", reflect.TypeFor[TAmbig](), map[string][]int{"a": {0, 1}}},
+		{
+			"ambiguous",
+			reflect.TypeFor[TAmbig](),
+			map[string][]int{"a": {0, 1}},
+			map[string]bool{},
+		},
 		{
 			"tagged wins",
 			reflect.TypeFor[TTagged](),
 			map[string][]int{"X": {0, 0}},
+			map[string]bool{},
 		},
-		{"same type twice", reflect.TypeFor[TDouble](), map[string][]int{}},
-		{"embedding cycle", reflect.TypeFor[TCycle](), map[string][]int{}},
+		{
+			"same type twice",
+			reflect.TypeFor[TDouble](),
+			map[string][]int{},
+			map[string]bool{},
+		},
+		{
+			"embedding cycle",
+			reflect.TypeFor[TCycle](),
+			map[string][]int{},
+			map[string]bool{},
+		},
 		{
 			"skipped fields",
 			reflect.TypeFor[struct {
@@ -241,6 +260,16 @@ func Test_newLevel_tabular(t *testing.T) {
 				b string
 			}](),
 			map[string][]int{},
+			map[string]bool{"A": true},
+		},
+		{
+			"ignored name another field takes",
+			reflect.TypeFor[struct {
+				A string `url:"-"`
+				B string `url:"A"`
+			}](),
+			map[string][]int{"A": {1}},
+			map[string]bool{},
 		},
 	}
 
@@ -250,7 +279,8 @@ func Test_newLevel_tabular(t *testing.T) {
 			have := newLevel(tc.typ, "url")
 
 			// --- Then ---
-			assert.Equal(t, tc.want, have.vis)
+			assert.Equal(t, tc.wVis, have.vis)
+			assert.Equal(t, tc.wIgn, have.ign)
 			assert.Nil(t, have.idx)
 		})
 	}
