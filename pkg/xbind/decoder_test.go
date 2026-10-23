@@ -2268,7 +2268,7 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("error - segment after a value", func(t *testing.T) {
 		// --- Given ---
-		segs, _ := parseKey("page[size].x")
+		segs, _ := parseKey("attr[k].x")
 
 		// --- When ---
 		have, err := NewDecoder().plan(reflect.TypeFor[TBox](), segs)
