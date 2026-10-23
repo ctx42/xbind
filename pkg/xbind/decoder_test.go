@@ -2398,10 +2398,11 @@ func Test_parseKey_tabular(t *testing.T) {
 func Test_Decoder_plan(t *testing.T) {
 	t.Run("steps", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TBox]()
 		segs, _ := parseKey("nest[a][1].size")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TBox](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2416,10 +2417,11 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("embedded field", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TFuzzDec]()
 		segs, _ := parseKey("f_str")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TFuzzDec](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2429,10 +2431,11 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("rest of the key for a map of plain values", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TBox]()
 		segs, _ := parseKey("attr.a.b")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TBox](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2445,10 +2448,11 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("error - bracket in the rest of a map key", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TBox]()
 		segs, _ := parseKey("attr.a[b]")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TBox](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -2457,10 +2461,11 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("error - ignored field", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TFuzzDec]()
 		segs, _ := parseKey("Ign")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TFuzzDec](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, errIgnored, err)
@@ -2469,10 +2474,11 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("error - segment after a value", func(t *testing.T) {
 		// --- Given ---
+		typ := reflect.TypeFor[TBox]()
 		segs, _ := parseKey("attr[k].x")
 
 		// --- When ---
-		have, err := NewDecoder().plan(reflect.TypeFor[TBox](), segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -2481,13 +2487,13 @@ func Test_Decoder_plan(t *testing.T) {
 
 	t.Run("error - segment into an interface", func(t *testing.T) {
 		// --- Given ---
-		segs, _ := parseKey("f.x")
 		typ := reflect.TypeFor[struct {
 			F any `url:"f"`
 		}]()
+		segs, _ := parseKey("f.x")
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs)
+		have, err := NewDecoder().plan(typ, segs, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -2603,6 +2609,23 @@ func Test_newState(t *testing.T) {
 	assert.NotNil(t, have.indexed)
 	assert.Len(t, 0, have.indexed)
 	assert.Equal(t, math.MaxInt, have.budget)
+	assert.NotNil(t, have.levels)
+	assert.Len(t, 0, have.levels)
+}
+
+func Test_state_level(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	typ := reflect.TypeFor[TBox]()
+	lvl := stt.level(typ, "url")
+
+	// --- When ---
+	have := stt.level(typ, "url")
+
+	// --- Then ---
+	assert.Equal(t, newLevel(typ, "url"), have)
+	assert.Equal(t, lvl, have)
+	assert.Len(t, 1, stt.levels)
 }
 
 func Test_state_entry(t *testing.T) {

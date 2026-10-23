@@ -2478,6 +2478,37 @@ func Test_Encoder_encodeMap_tabular(t *testing.T) {
 	}
 }
 
+func Test_Encoder_elemLevel_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want level
+	}{
+		{
+			"slice of structs",
+			reflect.TypeFor[[]TItem](),
+			newLevel(reflect.TypeFor[TItem](), "url"),
+		},
+		{
+			"map of pointers to structs",
+			reflect.TypeFor[map[string]*TItem](),
+			newLevel(reflect.TypeFor[TItem](), "url"),
+		},
+		{"slice of values", reflect.TypeFor[[]int](), level{}},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder().elemLevel(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_Encoder_isValueType(t *testing.T) {
 	t.Run("registered for pointer", func(t *testing.T) {
 		// --- Given ---

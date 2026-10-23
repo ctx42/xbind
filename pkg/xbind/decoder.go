@@ -181,7 +181,7 @@ func (dec *Decoder) decode(
 		if !ok {
 			err = ErrUnkFieldPath
 		} else {
-			steps, err = dec.plan(val.Type(), segs)
+			steps, err = dec.plan(val.Type(), segs, stt)
 		}
 		// Only the key names nothing; a value error may wrap the sentinel.
 		unknown := errors.Is(err, ErrUnkFieldPath)
@@ -201,7 +201,7 @@ func (dec *Decoder) decode(
 	}
 
 	// A field with a value error keeps that error.
-	lvl := newLevel(sv.Type(), dec.tagName())
+	lvl := stt.level(sv.Type(), dec.tagName())
 	seen := map[ptrKey]bool{}
 	dec.required("", sv, lvl, seen, stt, func(pth string, err error) {
 		if !stt.failed[pth] && !keys[pth] {
@@ -288,8 +288,13 @@ var errIgnored = errors.New("ignored field")
 // path, even when it has a promoted UnmarshalText method. A key naming
 // nothing returns [ErrUnkFieldPath], one naming an ignored field returns
 // errIgnored, and an index over the limit or past an array end returns an
-// error wrapping [ErrInvValue].
-func (dec *Decoder) plan(typ reflect.Type, segs []segment) ([]step, error) {
+// error wrapping [ErrInvValue]. The levels of the structs come from stt.
+func (dec *Decoder) plan(
+	typ reflect.Type,
+	segs []segment,
+	stt *state,
+) ([]step, error) {
+
 	var steps []step
 	for {
 		typ = indirect(typ)
@@ -308,7 +313,7 @@ func (dec *Decoder) plan(typ reflect.Type, segs []segment) ([]step, error) {
 			return nil, ErrUnkFieldPath
 
 		case typ.Kind() == reflect.Struct:
-			lvl := newLevel(typ, dec.tagName())
+			lvl := stt.level(typ, dec.tagName())
 			idx, ok := lvl.vis[seg.text]
 			if !ok {
 				if lvl.ign[seg.text] {
@@ -376,13 +381,14 @@ func (dec *Decoder) index(typ reflect.Type, txt string) (int, error) {
 
 // state is the state of one Decode call.
 type state struct {
-	reset   map[string]bool     // Canonical paths of slices and arrays reset.
-	log     []resetLog          // The resets, in the order made.
-	entries map[string]mapEntry // Map entries reached, by entry identity.
-	failed  map[string]bool     // Canonical paths of the values that failed.
-	set     map[string]bool     // Canonical paths of the values src keys set.
-	indexed map[string]bool     // Canonical paths of the indexed containers.
-	budget  int                 // Slice elements indexed keys may still add.
+	reset   map[string]bool        // Canonical paths of the reset containers.
+	log     []resetLog             // The resets, in the order made.
+	entries map[string]mapEntry    // Map entries reached, by entry identity.
+	failed  map[string]bool        // Canonical paths of the values that failed.
+	set     map[string]bool        // Canonical paths of the values keys set.
+	indexed map[string]bool        // Canonical paths of the indexed containers.
+	budget  int                    // Slice elements indexed keys may still add.
+	levels  map[reflect.Type]level // Levels of the struct types met.
 }
 
 // resetLog is a reset of a slice or array, or a value a src key sets.
@@ -407,7 +413,19 @@ func newState() *state {
 		set:     make(map[string]bool),
 		indexed: make(map[string]bool),
 		budget:  math.MaxInt,
+		levels:  make(map[reflect.Type]level),
 	}
+}
+
+// level returns the level of the typ struct for the key struct tag, built on
+// the first call for the type.
+func (stt *state) level(typ reflect.Type, key string) level {
+	lvl, ok := stt.levels[typ]
+	if !ok {
+		lvl = newLevel(typ, key)
+		stt.levels[typ] = lvl
+	}
+	return lvl
 }
 
 // entry returns the entry of the map at the canonical path pth that the
@@ -722,7 +740,7 @@ func (dec *Decoder) requiredIn(
 			val = addressable(val)
 		}
 		sv := mirror.NewStructValue(val.Addr().Interface())
-		lvl := newLevel(val.Type(), dec.tagName())
+		lvl := stt.level(val.Type(), dec.tagName())
 		dec.required(pth, sv, lvl, seen, stt, setErr)
 
 	case reflect.Slice, reflect.Array:

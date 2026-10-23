@@ -129,8 +129,9 @@ func (enc *Encoder) tagName() string {
 
 // encode encodes src to dst under the field path. The seen map holds the
 // pointers, maps and slices on the path to src; meeting one of them again is
-// a cycle. The lvl is the level position of an embedded struct src; for any
-// other src it is the zero level.
+// a cycle. The lvl is the level position of an embedded struct src, or the
+// level of a struct src, or of the struct it points to, built beforehand; for
+// any other src it is the zero level.
 func (enc *Encoder) encode(
 	dst url.Values,
 	field string,
@@ -352,6 +353,7 @@ func (enc *Encoder) encodeSlice(
 
 	value := enc.isValueType(src.Type().Elem())
 	itf := src.Type().Elem().Kind() == reflect.Interface
+	lvl := enc.elemLevel(src.Type())
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
 		ipt := prefix + "[" + strconv.Itoa(i) + "]"
@@ -368,7 +370,7 @@ func (enc *Encoder) encodeSlice(
 				continue
 			}
 		}
-		if err := enc.encode(dst, ipt, val, seen, level{}); err != nil {
+		if err := enc.encode(dst, ipt, val, seen, lvl); err != nil {
 			return err
 		}
 	}
@@ -393,6 +395,7 @@ func (enc *Encoder) encodeMap(
 		val reflect.Value // Map value.
 	}
 	var prs []pair
+	lvl := enc.elemLevel(src.Type())
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
 		if mk.Kind() == reflect.Interface && !mk.IsNil() {
@@ -438,11 +441,21 @@ func (enc *Encoder) encodeMap(
 		}
 		pth := prefix + "[" + pr.key + "]"
 		val := addressable(pr.val)
-		if err := enc.encode(dst, pth, val, seen, level{}); err != nil {
+		if err := enc.encode(dst, pth, val, seen, lvl); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// elemLevel returns the level of the elements of the typ container, built
+// once for all of them, when they are structs or pointers to structs; else
+// it returns the zero level.
+func (enc *Encoder) elemLevel(typ reflect.Type) level {
+	if et := indirect(typ.Elem()); et.Kind() == reflect.Struct {
+		return newLevel(et, enc.tagName())
+	}
+	return level{}
 }
 
 // isValueType returns true if a value of the typ type, or a pointer to one,
