@@ -41,7 +41,7 @@ func Test_WithDecAllowUnknown(t *testing.T) {
 	dec := &Decoder{}
 
 	// --- When ---
-	WithDecAllowUnknown(dec)
+	WithDecAllowUnknown()(dec)
 
 	// --- Then ---
 	assert.True(t, dec.allowUnknown)
@@ -62,7 +62,7 @@ func Test_NewDecoder(t *testing.T) {
 
 	t.Run("with options", func(t *testing.T) {
 		// --- When ---
-		have := NewDecoder(WithDecTag("abc"), WithDecAllowUnknown)
+		have := NewDecoder(WithDecTag("abc"), WithDecAllowUnknown())
 
 		// --- Then ---
 		assert.Equal(t, "abc", have.tag)
@@ -842,7 +842,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		}
 
 		// --- When ---
-		err := NewDecoder(WithDecAllowUnknown).Decode(dst, src)
+		err := NewDecoder(WithDecAllowUnknown()).Decode(dst, src)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -974,7 +974,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		src := url.Values{}
 
 		// --- When ---
-		err := NewDecoder(WithDecAllowUnknown).Decode(dst, src)
+		err := NewDecoder(WithDecAllowUnknown()).Decode(dst, src)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1110,7 +1110,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		}
 
 		// --- When ---
-		err := NewDecoder(WithDecAllowUnknown).Decode(dst, src)
+		err := NewDecoder(WithDecAllowUnknown()).Decode(dst, src)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1320,7 +1320,7 @@ func Fuzz_Decoder_Decode(f *testing.F) {
 		// --- Given ---
 		dec := NewDecoder()
 		if unknown {
-			dec = NewDecoder(WithDecAllowUnknown)
+			dec = NewDecoder(WithDecAllowUnknown())
 		}
 
 		dst := &TFuzzDec{}

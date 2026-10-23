@@ -23,15 +23,20 @@ import (
 // [encoding.TextUnmarshaler] interface.
 var iUnmarshaler = reflect.TypeFor[encoding.TextUnmarshaler]()
 
+// DecoderOption configures a [Decoder] built by [NewDecoder].
+type DecoderOption func(*Decoder)
+
 // WithDecTag is a [NewDecoder] option setting the struct tag name used for
 // field name aliases and options.
-func WithDecTag(tag string) func(*Decoder) {
+func WithDecTag(tag string) DecoderOption {
 	return func(dec *Decoder) { dec.tag = tag }
 }
 
 // WithDecAllowUnknown is a [NewDecoder] option allowing unknown fields in the
 // source map.
-func WithDecAllowUnknown(dec *Decoder) { dec.allowUnknown = true }
+func WithDecAllowUnknown() DecoderOption {
+	return func(dec *Decoder) { dec.allowUnknown = true }
+}
 
 // Decoder decodes [url.Values] to a struct. The zero value is ready to use,
 // reads the "url" struct tag and rejects unknown keys.
@@ -43,7 +48,7 @@ type Decoder struct {
 
 // NewDecoder returns a new instance of [Decoder] reading the "url" struct tag
 // and rejecting unknown keys unless the options say otherwise.
-func NewDecoder(opts ...func(*Decoder)) *Decoder {
+func NewDecoder(opts ...DecoderOption) *Decoder {
 	dec := &Decoder{
 		tag: defaultTag,
 		reg: decReg{

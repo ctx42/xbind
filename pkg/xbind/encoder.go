@@ -28,15 +28,18 @@ type Encoder struct {
 	reg encReg // Custom encoders for types.
 }
 
+// EncoderOption configures an [Encoder] built by [NewEncoder].
+type EncoderOption func(*Encoder)
+
 // WithEncTag is a [NewEncoder] option setting the struct tag name used for
 // field name aliases and options.
-func WithEncTag(tag string) func(*Encoder) {
+func WithEncTag(tag string) EncoderOption {
 	return func(enc *Encoder) { enc.tag = tag }
 }
 
 // NewEncoder returns a new instance of [Encoder] reading the "url" struct tag
 // unless the [WithEncTag] option says otherwise.
-func NewEncoder(opts ...func(*Encoder)) *Encoder {
+func NewEncoder(opts ...EncoderOption) *Encoder {
 	enc := &Encoder{
 		tag: defaultTag,
 		reg: make(encReg),
