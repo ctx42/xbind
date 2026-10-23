@@ -2640,6 +2640,7 @@ func Test_Encoder_encodeMap(t *testing.T) {
 
 		// --- Then ---
 		xrrtest.AssertEqual(t, "F: msg (ECGeneric)", err)
+		assert.Empty(t, dst)
 	})
 
 	t.Run("error - value encoder", func(t *testing.T) {

@@ -1021,7 +1021,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
-		assert.ErrorIs(t, ErrUnexported, err)
+		xrrtest.AssertFieldsEqual(t, "x: unexported field (ECUnexported)", err)
 	})
 
 	t.Run("error - unmarshaler from nil interface", func(t *testing.T) {

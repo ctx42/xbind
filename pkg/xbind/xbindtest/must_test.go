@@ -33,6 +33,22 @@ func Test_MustEncode(t *testing.T) {
 		// --- Then ---
 		assert.Equal(t, "Fn: encoder not found for `func()`", *have)
 	})
+
+	t.Run("error - panics with the error", func(t *testing.T) {
+		// --- Given ---
+		s := struct{ Fn func() }{Fn: func() {}}
+
+		// --- When ---
+		have := func() (val any) {
+			defer func() { val = recover() }()
+			_ = MustEncode(s)
+			return nil
+		}()
+
+		// --- Then ---
+		err, _ := have.(error)
+		assert.ErrorIs(t, xbind.ErrEncNotFound, err)
+	})
 }
 
 func Test_MustDecode(t *testing.T) {
