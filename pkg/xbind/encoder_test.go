@@ -1317,9 +1317,9 @@ func Test_Encoder_Encode(t *testing.T) {
 		}
 		assert.Equal(t, want, dst)
 
-		have := &TBox{}
-		assert.NoError(t, NewDecoder().Decode(have, dst))
-		assert.Equal(t, src, have)
+		back := &TBox{}
+		assert.NoError(t, NewDecoder().Decode(back, dst))
+		assert.Equal(t, src, back)
 	})
 
 	t.Run("error - map key with a bracket", func(t *testing.T) {
@@ -1755,18 +1755,18 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 		assert.Equal(t, []string{str}, dst["s"])
 
 		// Decoding replaces the slice already there.
-		have := &TFuzzEnc{SS: []string{"junk"}}
+		back := &TFuzzEnc{SS: []string{"junk"}}
 		dec := NewDecoder(WithDecFunc(decPoint))
-		assert.NoError(t, dec.Decode(have, dst))
-		assert.True(t, have.T.Equal(src.T))
+		assert.NoError(t, dec.Decode(back, dst))
+		assert.True(t, back.T.Equal(src.T))
 		_, wOff := src.T.Zone()
-		_, hOff := have.T.Zone()
+		_, hOff := back.T.Zone()
 		assert.Equal(t, wOff, hOff)
-		bothNaN := math.IsNaN(have.F) && math.IsNaN(src.F)
-		assert.True(t, have.F == src.F || bothNaN)
-		have.T, have.F, src.F = src.T, 0, 0
+		bothNaN := math.IsNaN(back.F) && math.IsNaN(src.F)
+		assert.True(t, back.F == src.F || bothNaN)
+		back.T, back.F, src.F = src.T, 0, 0
 		src.TFuzzEmb.S = "" // A shadowed field is not encoded.
-		assert.Equal(t, src, have)
+		assert.Equal(t, src, back)
 	})
 }
 
