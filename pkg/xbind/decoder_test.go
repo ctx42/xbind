@@ -1512,6 +1512,26 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 0, dst.M)
 	})
 
+	t.Run("error - failed key leaves a nil map nil", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			K map[int]int `url:"k"`
+			V map[int]int `url:"v"`
+		}{}
+		src := url.Values{"k[x]": {"1"}, "v[1]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"k[x]: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"v[1]: invalid value: cannot convert `x` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.K)
+		assert.Nil(t, dst.V)
+	})
+
 	t.Run("error - map key holding NaN", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {

@@ -511,9 +511,6 @@ func (dec *Decoder) apply(
 		return dec.apply(dst, steps[1:], vls, stt, fieldPath(pth, stp.name))
 
 	case stepKey:
-		if dst.IsNil() {
-			dst.Set(reflect.MakeMap(dst.Type()))
-		}
 		key, err := decKey(dst.Type().Key(), dec.reg, stp.key)
 		if err != nil {
 			return err
@@ -538,6 +535,9 @@ func (dec *Decoder) apply(
 		if err != nil {
 			stt.undo(mark) // A value the map shares keeps its data.
 			return err
+		}
+		if dst.IsNil() {
+			dst.Set(reflect.MakeMap(dst.Type())) // Made for its first entry.
 		}
 		dst.SetMapIndex(key, val)
 		return nil
