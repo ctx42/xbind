@@ -2034,7 +2034,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 2, dst.Next.Val)
 	})
 
-	t.Run("recursive struct is not allocated", func(t *testing.T) {
+	t.Run("error - recursive struct is not allocated", func(t *testing.T) {
 		// --- Given ---
 		dst := &TNode{}
 		src := url.Values{"val": {"1"}}
@@ -2048,7 +2048,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.Next)
 	})
 
-	t.Run("embedding cycle", func(t *testing.T) {
+	t.Run("error - embedding cycle", func(t *testing.T) {
 		// --- Given ---
 		dst := &TCycle{}
 		src := url.Values{"TCycle": {"x"}}
@@ -2076,7 +2076,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.tSelfEmb.tSelfEmb)
 	})
 
-	t.Run("unexported nil pointer in recursive struct", func(t *testing.T) {
+	t.Run("error - unexported nil pointer in recursive struct", func(t *testing.T) {
 		// --- Given ---
 		dst := &TUnexpNode{tStr: &tStr{}}
 		src := url.Values{
