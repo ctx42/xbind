@@ -63,7 +63,7 @@ func Test_decFor(t *testing.T) {
 		assert.Equal(t, want, reflect.ValueOf(have).Pointer())
 	})
 
-	t.Run("registered decoder returns error", func(t *testing.T) {
+	t.Run("registered decoder over the built-in one", func(t *testing.T) {
 		// --- Given ---
 		dec := func(...string) (any, error) { return nil, errors.New("msg") }
 		reg := decReg{reflect.TypeOf(""): dec}
@@ -248,7 +248,7 @@ func Test_decBool_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(bool))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -316,7 +316,7 @@ func Test_decFloat32_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(float32))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -385,7 +385,7 @@ func Test_decFloat64_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(float64))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -454,7 +454,7 @@ func Test_decInt_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(int))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -519,7 +519,7 @@ func Test_decInt8_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(int8))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -588,7 +588,7 @@ func Test_decInt16_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(int16))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -657,7 +657,7 @@ func Test_decInt32_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(int32))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -726,7 +726,7 @@ func Test_decInt64_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(int64))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -805,7 +805,7 @@ func Test_decUint_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(uint))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -881,7 +881,7 @@ func Test_decUint8_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(uint8))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -960,7 +960,7 @@ func Test_decUint16_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(uint16))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -1039,7 +1039,7 @@ func Test_decUint32_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(uint32))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -1119,7 +1119,7 @@ func Test_decUint64_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, have.(uint64))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -1210,7 +1210,7 @@ func Test_decTime_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			tim := have.(time.Time)
+			tim, _ := have.(time.Time) // A zero time fails the checks below.
 			assert.Time(t, tc.wTim, tim)
 			_, off := tim.Zone()
 			assert.Equal(t, tc.wOff, off)
@@ -1267,7 +1267,7 @@ func Test_decDur_tabular(t *testing.T) {
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Duration(t, tc.want, have.(time.Duration))
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }
