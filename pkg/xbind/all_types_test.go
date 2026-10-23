@@ -535,7 +535,7 @@ type tSelfEmb struct {
 	X int `url:"x"`
 }
 
-// TSelfEmb embeds [tSelfEmb] by value.
+// TSelfEmb embeds tSelfEmb by value.
 type TSelfEmb struct{ tSelfEmb }
 
 // TBuilder has a field of a type with a pointer to itself.

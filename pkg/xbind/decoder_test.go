@@ -1341,6 +1341,16 @@ func Test_Decoder_Decode(t *testing.T) {
 
 	t.Run("registered decoder", func(t *testing.T) {
 		// --- Given ---
+		dec := NewDecoder(
+			WithDecFunc(func(s string) (time.Time, error) {
+				return time.Parse(time.DateOnly, s)
+			}),
+			WithDecFunc(decPoint),
+			WithDecFunc(func(s string) (TLevel, error) {
+				n, err := strconv.Atoi(s)
+				return TLevel(n), err
+			}),
+		)
 		dst := &struct {
 			T  time.Time            `url:"t"`
 			TP *time.Time           `url:"tp"`
@@ -1359,16 +1369,6 @@ func Test_Decoder_Decode(t *testing.T) {
 			"pp":   {"3,4"},
 			"l":    {"9"},
 		}
-		dec := NewDecoder(
-			WithDecFunc(func(s string) (time.Time, error) {
-				return time.Parse(time.DateOnly, s)
-			}),
-			WithDecFunc(decPoint),
-			WithDecFunc(func(s string) (TLevel, error) {
-				n, err := strconv.Atoi(s)
-				return TLevel(n), err
-			}),
-		)
 
 		// --- When ---
 		err := dec.Decode(dst, src)
@@ -3143,7 +3143,7 @@ func Test_Decoder_requiredIn(t *testing.T) {
 		seen := map[ptrKey]bool{}
 
 		stt := newState()
-		stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2", false)
+		_ = stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2", false)
 
 		var have []string
 		setErr := func(pth string, _ error) { have = append(have, pth) }

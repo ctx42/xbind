@@ -28,7 +28,7 @@ func Test_MustEncode(t *testing.T) {
 		s := struct{ Fn func() }{Fn: func() {}}
 
 		// --- When ---
-		have := assert.PanicMsg(t, func() { MustEncode(s) })
+		have := assert.PanicMsg(t, func() { _ = MustEncode(s) })
 
 		// --- Then ---
 		assert.Equal(t, "Fn: encoder not found for `func()`", *have)
