@@ -687,6 +687,12 @@ func (dec *Decoder) requiredIn(
 		return
 	}
 	switch val.Kind() { //nolint:exhaustive
+	case reflect.Slice, reflect.Array, reflect.Map:
+		if dec.isLeafType(indirect(val.Type().Elem())) {
+			return // No element holds a required field.
+		}
+	}
+	switch val.Kind() { //nolint:exhaustive
 	case reflect.Struct:
 		if !val.CanAddr() {
 			val = addressable(val)
