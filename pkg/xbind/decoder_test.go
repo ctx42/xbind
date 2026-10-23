@@ -1383,7 +1383,7 @@ func Test_Decoder_Decode(t *testing.T) {
 			WithDecFunc(decPoint),
 			WithDecFunc(func(s string) (TLevel, error) {
 				n, err := strconv.Atoi(s)
-				return TLevel(n), err
+				return TLevel(n + 100), err // UnmarshalText gives 9.
 			}),
 		)
 		dst := &struct {
@@ -1416,7 +1416,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, 6, dst.TM["a"].Day())
 		assert.Equal(t, TPoint{X: 1, Y: 2}, dst.P)
 		assert.Equal(t, TPoint{X: 3, Y: 4}, *dst.PP)
-		assert.Equal(t, TLevel(9), dst.L)
+		assert.Equal(t, TLevel(109), dst.L)
 	})
 
 	t.Run("error - registered decoder", func(t *testing.T) {
