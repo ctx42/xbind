@@ -119,7 +119,7 @@ func (enc *Encoder) Encode(dst url.Values, src any) error {
 		ptr.Elem().Set(val)
 		val = ptr
 	}
-	return enc.encode(dst, "", val, map[ptrKey]bool{}, level{})
+	return enc.encode(dst, "", val, newEncState(), level{})
 }
 
 // tagName returns the name of the struct tag the encoder reads.
@@ -130,7 +130,7 @@ func (enc *Encoder) tagName() string {
 	return enc.tag
 }
 
-// encode encodes src to dst under the field path. The seen map holds the
+// encode encodes src to dst under the field path. The est holds the
 // pointers, maps and slices on the path to src; meeting one of them again is
 // a cycle. The lvl is the level position of an embedded struct src, or the
 // level of a struct src, or of the struct it points to, built beforehand; for
@@ -139,7 +139,7 @@ func (enc *Encoder) encode(
 	dst url.Values,
 	field string,
 	src reflect.Value,
-	seen map[ptrKey]bool,
+	est *encState,
 	lvl level,
 ) error {
 
@@ -156,11 +156,11 @@ func (enc *Encoder) encode(
 				return nil
 			}
 			key := ptrKey{ptr: src.Pointer(), typ: src.Type()}
-			if seen[key] {
+			if est.seen[key] {
 				return fieldError(field, ErrCycle)
 			}
-			seen[key] = true
-			defer delete(seen, key)
+			est.seen[key] = true
+			defer delete(est.seen, key)
 			src = src.Elem()
 		}
 	}
@@ -168,23 +168,23 @@ func (enc *Encoder) encode(
 		// A map or slice holding itself is a cycle without a pointer.
 		if src.Len() > 0 {
 			key := ptrKey{ptr: src.Pointer(), typ: src.Type(), len: src.Len()}
-			if seen[key] {
+			if est.seen[key] {
 				return fieldError(field, ErrCycle)
 			}
-			seen[key] = true
-			defer delete(seen, key)
+			est.seen[key] = true
+			defer delete(est.seen, key)
 		}
 	}
 
 	switch src.Kind() { //nolint:exhaustive
 	case reflect.Slice, reflect.Array:
-		return enc.encodeSlice(dst, field, src, seen)
+		return enc.encodeSlice(dst, field, src, est)
 
 	case reflect.Map:
-		return enc.encodeMap(dst, field, src, seen)
+		return enc.encodeMap(dst, field, src, est)
 
 	case reflect.Struct:
-		return enc.encodeFields(dst, field, src, seen, lvl)
+		return enc.encodeFields(dst, field, src, est, lvl)
 
 	default:
 		return fieldError(field, encNotFound(src.Type()))
@@ -192,19 +192,19 @@ func (enc *Encoder) encode(
 }
 
 // encodeFields encodes the fields of the src struct to dst under the field
-// path. The seen map is passed to the encode method. The lvl is the level
+// path. The est is passed to the encode method. The lvl is the level
 // position of src, the zero level for a struct starting a level; a field its
 // key does not name there is skipped.
 func (enc *Encoder) encodeFields(
 	dst url.Values,
 	field string,
 	src reflect.Value,
-	seen map[ptrKey]bool,
+	est *encState,
 	lvl level,
 ) error {
 
 	if lvl.vis == nil {
-		lvl = newLevel(src.Type(), enc.tagName())
+		lvl = est.level(src.Type(), enc.tagName())
 	}
 	md := mirror.NewTypeMetadata(src.Type())
 	for i := 0; i < src.NumField(); i++ {
@@ -227,7 +227,7 @@ func (enc *Encoder) encodeFields(
 				continue
 			}
 			// The fields of an embedded struct belong to the outer struct.
-			err := enc.encode(dst, field, val, seen, lvl.embedded(i))
+			err := enc.encode(dst, field, val, est, lvl.embedded(i))
 			if err != nil {
 				return err
 			}
@@ -239,11 +239,36 @@ func (enc *Encoder) encodeFields(
 		}
 
 		fldPath := fieldPath(field, name)
-		if err := enc.encode(dst, fldPath, val, seen, level{}); err != nil {
+		if err := enc.encode(dst, fldPath, val, est, level{}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// encState is the state of one [Encoder.Encode] call.
+type encState struct {
+	seen   map[ptrKey]bool        // Pointers, maps and slices on the path.
+	levels map[reflect.Type]level // Levels of the struct types met.
+}
+
+// newEncState returns the state of a new [Encoder.Encode] call.
+func newEncState() *encState {
+	return &encState{
+		seen:   make(map[ptrKey]bool),
+		levels: make(map[reflect.Type]level),
+	}
+}
+
+// level returns the level of the typ struct for the key struct tag, built on
+// the first call for the type.
+func (est *encState) level(typ reflect.Type, key string) level {
+	lvl, ok := est.levels[typ]
+	if !ok {
+		lvl = newLevel(typ, key)
+		est.levels[typ] = lvl
+	}
+	return lvl
 }
 
 // ptrKey identifies a pointer, map or slice on the encoding path. The type
@@ -354,17 +379,17 @@ func isMarshaler(typ reflect.Type) bool {
 // value (see isValueType) are added as values of the prefix key; any other
 // element, a struct, a map or a [Marshaler], is encoded under the prefix key
 // and its index ("list[0]"). An element of an interface type is told by the
-// value it holds. The seen map is passed to the encode method.
+// value it holds. The est is passed to the encode method.
 func (enc *Encoder) encodeSlice(
 	dst url.Values,
 	prefix string,
 	src reflect.Value,
-	seen map[ptrKey]bool,
+	est *encState,
 ) error {
 
 	value := enc.isValueType(src.Type().Elem())
 	itf := src.Type().Elem().Kind() == reflect.Interface
-	lvl := enc.elemLevel(src.Type())
+	lvl := enc.elemLevel(src.Type(), est)
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
 		isVal := value
@@ -382,7 +407,7 @@ func (enc *Encoder) encodeSlice(
 			}
 		}
 		ipt := prefix + "[" + strconv.Itoa(i) + "]" // Only indexed values.
-		if err := enc.encode(dst, ipt, val, seen, lvl); err != nil {
+		if err := enc.encode(dst, ipt, val, est, lvl); err != nil {
 			return err
 		}
 	}
@@ -393,12 +418,12 @@ func (enc *Encoder) encodeSlice(
 // map key ("attr[k]"). The keys are encoded with [encoding.TextMarshaler] or
 // the base type encoders; an empty key, one with a bracket, a NaN, and two keys
 // encoded to one text are errors. The entries are encoded in the order of their
-// key texts. The seen map is passed to the encode method.
+// key texts. The est is passed to the encode method.
 func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
 	src reflect.Value,
-	seen map[ptrKey]bool,
+	est *encState,
 ) error {
 
 	type pair struct {
@@ -407,7 +432,7 @@ func (enc *Encoder) encodeMap(
 		val reflect.Value // Map value.
 	}
 	var prs []pair
-	lvl := enc.elemLevel(src.Type())
+	lvl := enc.elemLevel(src.Type(), est)
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
 		if mk.Kind() == reflect.Interface && !mk.IsNil() {
@@ -456,19 +481,19 @@ func (enc *Encoder) encodeMap(
 		}
 		pth := prefix + "[" + pr.key + "]"
 		val := addressable(pr.val)
-		if err := enc.encode(dst, pth, val, seen, lvl); err != nil {
+		if err := enc.encode(dst, pth, val, est, lvl); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// elemLevel returns the level of the elements of the typ container, built
-// once for all of them, when they are structs or pointers to structs; else
-// it returns the zero level.
-func (enc *Encoder) elemLevel(typ reflect.Type) level {
+// elemLevel returns the level of the elements of the typ container, taken
+// from est, when they are structs or pointers to structs; else it returns
+// the zero level.
+func (enc *Encoder) elemLevel(typ reflect.Type, est *encState) level {
 	if et := indirect(typ.Elem()); et.Kind() == reflect.Struct {
-		return newLevel(et, enc.tagName())
+		return est.level(et, enc.tagName())
 	}
 	return level{}
 }
