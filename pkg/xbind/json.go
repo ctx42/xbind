@@ -23,7 +23,9 @@ func UnmarshalJSON(data []byte, dst any) error {
 
 // UnmarshalJSONReader unmarshals the single JSON value read from r to dst.
 // Unknown object fields and data after the value are errors. Errors are
-// translated with [HUE]; a nil r returns [ErrBind].
+// translated with [HUE]; a nil r returns [ErrBind]. The value is read into
+// memory whole, with no size limit; bound an untrusted r, as with
+// [io.LimitReader].
 func UnmarshalJSONReader(r io.Reader, dst any) error {
 	if r == nil {
 		return ErrBind
@@ -49,7 +51,8 @@ func UnmarshalJSONReader(r io.Reader, dst any) error {
 
 // UnmarshalJSONBody unmarshals the JSON request body to dst, see
 // [UnmarshalJSONReader], and closes the body. A nil request or body returns
-// [ErrBind].
+// [ErrBind]. The body is read with no size limit; bound it with
+// [http.MaxBytesReader] first.
 func UnmarshalJSONBody(req *http.Request, dst any) error {
 	if req == nil || req.Body == nil {
 		return ErrBind
