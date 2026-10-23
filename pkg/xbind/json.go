@@ -98,7 +98,8 @@ func MaybeHUE(err error) (bool, error) {
 			return true, xrr.Envelop(ue, ErrBind)
 		}
 		if ute.Type == nil {
-			return true, xrr.ErrInvJSON
+			err = xrr.New("unmarshal type mismatch", xrr.ECInvJSON)
+			return true, xrr.Envelop(err, xrr.ErrInvJSON)
 		}
 		const format = "unmarshal type mismatch; expected %s"
 		typ := jsonType(ute.Type)

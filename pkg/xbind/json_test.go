@@ -645,7 +645,10 @@ func Test_MaybeHUE(t *testing.T) {
 
 		// --- Then ---
 		assert.True(t, have)
-		assert.Same(t, xrr.ErrInvJSON, err)
+		var e xrr.Envelope
+		assert.ErrorAs(t, &e, err)
+		assert.ErrorIs(t, xrr.ErrInvJSON, e.Lead())
+		assert.ErrorEqual(t, "unmarshal type mismatch", e.Unwrap())
 	})
 }
 
