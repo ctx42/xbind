@@ -190,6 +190,20 @@ func indirect(typ reflect.Type) reflect.Type {
 	return typ
 }
 
+// baseType returns the type typ holds through pointers, slices, arrays and
+// maps, at any depth; for any other type it returns typ.
+func baseType(typ reflect.Type) reflect.Type {
+	for {
+		switch typ.Kind() { //nolint:exhaustive
+		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+			typ = typ.Elem()
+
+		default:
+			return typ
+		}
+	}
+}
+
 // addressable returns an addressable copy of val.
 func addressable(val reflect.Value) reflect.Value {
 	cpy := reflect.New(val.Type()).Elem()

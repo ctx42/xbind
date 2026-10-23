@@ -354,6 +354,36 @@ func Test_indirect_tabular(t *testing.T) {
 	}
 }
 
+func Test_baseType_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want reflect.Type
+	}{
+		{"value", reflect.TypeFor[int](), reflect.TypeFor[int]()},
+		{"pointer", reflect.TypeFor[**int](), reflect.TypeFor[int]()},
+		{"slice", reflect.TypeFor[[]TItem](), reflect.TypeFor[TItem]()},
+		{"array", reflect.TypeFor[[2]*TItem](), reflect.TypeFor[TItem]()},
+		{"map", reflect.TypeFor[map[int]TItem](), reflect.TypeFor[TItem]()},
+		{
+			"nested",
+			reflect.TypeFor[*map[string][]*[2]TItem](),
+			reflect.TypeFor[TItem](),
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := baseType(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_addressable(t *testing.T) {
 	// --- Given ---
 	m := reflect.ValueOf(map[string]int{"a": 1})

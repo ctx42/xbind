@@ -86,6 +86,34 @@ func Test_checkTags(t *testing.T) {
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
 	})
+
+	t.Run("error - malformed tag of slice element struct", func(t *testing.T) {
+		// --- Given ---
+		elm := reflect.TypeOf(badTag(`url:n`, false)).Elem()
+		typ := reflect.StructOf([]reflect.StructField{
+			{Name: "L", Type: reflect.SliceOf(elm)},
+		})
+
+		// --- When ---
+		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: L.N", err)
+	})
+
+	t.Run("error - bracket in name of map element struct", func(t *testing.T) {
+		// --- Given ---
+		type item struct {
+			A string `url:"a[b]"`
+		}
+		typ := reflect.TypeFor[struct{ M map[string][]*item }]()
+
+		// --- When ---
+		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: M.A: bracket in name", err)
+	})
 }
 
 func Test_checkTags_tabular(t *testing.T) {
