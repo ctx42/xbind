@@ -1466,8 +1466,7 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := map[int][]TItem{1: {{Size: 1}, {Size: 2}}}
-		assert.Equal(t, want, dst.M)
+		assert.Equal(t, map[int][]TItem{1: {{Size: 1}, {Size: 2}}}, dst.M)
 	})
 
 	t.Run("pointer map keys name one entry", func(t *testing.T) {
@@ -1554,8 +1553,7 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := map[key]int{{"a b", ""}: 1, {"a", "b "}: 2}
-		assert.Equal(t, want, dst.M)
+		assert.Equal(t, map[key]int{{"a b", ""}: 1, {"a", "b "}: 2}, dst.M)
 	})
 
 	t.Run("map of plain values takes the rest of a key", func(t *testing.T) {
@@ -2437,8 +2435,7 @@ func Test_Decoder_index(t *testing.T) {
 		have, err := NewDecoder().index(reflect.TypeFor[[]int](), "x")
 
 		// --- Then ---
-		want := "invalid field path"
-		assert.ErrorEqual(t, want, err)
+		assert.ErrorEqual(t, "invalid field path", err)
 		assert.Equal(t, 0, have)
 	})
 
@@ -2447,8 +2444,7 @@ func Test_Decoder_index(t *testing.T) {
 		have, err := NewDecoder().index(reflect.TypeFor[[]int](), "-1")
 
 		// --- Then ---
-		want := "invalid field path"
-		assert.ErrorEqual(t, want, err)
+		assert.ErrorEqual(t, "invalid field path", err)
 		assert.Equal(t, 0, have)
 	})
 
@@ -2480,8 +2476,7 @@ func Test_Decoder_index(t *testing.T) {
 		have, err := NewDecoder().index(reflect.TypeFor[[2]int](), "2")
 
 		// --- Then ---
-		want := "invalid value: index 2 past the array end"
-		assert.ErrorEqual(t, want, err)
+		assert.ErrorEqual(t, "invalid value: index 2 past the array end", err)
 		assert.Equal(t, 0, have)
 	})
 

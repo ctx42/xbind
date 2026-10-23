@@ -27,14 +27,11 @@ func Test_encReg_lookup(t *testing.T) {
 	})
 
 	t.Run("pointer to registered", func(t *testing.T) {
-		// --- Given ---
-		val := reflect.ValueOf(&TPoint{3, 4})
-
 		// --- When ---
 		have := reg.lookup(reflect.TypeFor[*TPoint]())
 
 		// --- Then ---
-		assert.Equal(t, "3,4", must.Value(have(val)))
+		assert.Equal(t, "3,4", must.Value(have(reflect.ValueOf(&TPoint{3, 4}))))
 	})
 
 	t.Run("not registered", func(t *testing.T) {

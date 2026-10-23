@@ -164,8 +164,7 @@ func Test_decFor_tabular(t *testing.T) {
 			want := reflect.ValueOf(tc.want).Pointer()
 			assert.Equal(t, want, reflect.ValueOf(have).Pointer())
 
-			hVal := must.Value(have(tc.vls...))
-			assert.Equal(t, tc.wVal, hVal)
+			assert.Equal(t, tc.wVal, must.Value(have(tc.vls...)))
 		})
 	}
 }
@@ -1131,8 +1130,7 @@ func Test_decTime(t *testing.T) {
 		_, err := decTime("202203-15T11:43:01Z")
 
 		// --- Then ---
-		want := "invalid RFC3339 time: `202203-15T11:43:01Z`"
-		assert.ErrorEqual(t, want, err)
+		assert.ErrorEqual(t, "invalid RFC3339 time: `202203-15T11:43:01Z`", err)
 		assert.ErrorIs(t, ErrTimeFormat, err)
 		xrrtest.AssertCode(t, ECInvTimeFormat, err)
 	})

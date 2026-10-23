@@ -162,8 +162,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "f_a_str=&f_a_str=&f_str="
-		assert.Equal(t, want, dst.Encode())
+		assert.Equal(t, "f_a_str=&f_a_str=&f_str=", dst.Encode())
 	})
 
 	t.Run("struct with type aliases", func(t *testing.T) {
@@ -678,8 +677,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}
-		assert.Equal(t, want, dst)
+		assert.Equal(t, url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}, dst)
 	})
 
 	t.Run("pointers to slice array and map fields", func(t *testing.T) {
@@ -703,8 +701,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}
-		assert.Equal(t, want, dst)
+		assert.Equal(t, url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}, dst)
 	})
 
 	t.Run("omitempty struct with unexported fields", func(t *testing.T) {
@@ -1402,8 +1399,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := url.Values{"f_str": {"out"}, "f_int": {"2"}}
-		assert.Equal(t, want, dst)
+		assert.Equal(t, url.Values{"f_str": {"out"}, "f_int": {"2"}}, dst)
 	})
 
 	t.Run("ambiguous fields are not encoded", func(t *testing.T) {
@@ -1516,8 +1512,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrCycle, err)
-		want := "next.next: pointer cycle (ECCycle)"
-		xrrtest.AssertFieldsEqual(t, want, err)
+		xrrtest.AssertFieldsEqual(t, "next.next: pointer cycle (ECCycle)", err)
 	})
 
 	t.Run("error - embedding cycle", func(t *testing.T) {
@@ -1547,8 +1542,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, node{M: m})
 
 		// --- Then ---
-		want := "m[a].m: pointer cycle (ECCycle)"
-		xrrtest.AssertFieldsEqual(t, want, err)
+		xrrtest.AssertFieldsEqual(t, "m[a].m: pointer cycle (ECCycle)", err)
 	})
 
 	t.Run("error - slice cycle", func(t *testing.T) {
@@ -1565,8 +1559,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, node{L: s})
 
 		// --- Then ---
-		want := "l[0].l: pointer cycle (ECCycle)"
-		xrrtest.AssertFieldsEqual(t, want, err)
+		xrrtest.AssertFieldsEqual(t, "l[0].l: pointer cycle (ECCycle)", err)
 	})
 
 	t.Run("shared slice is not a cycle", func(t *testing.T) {

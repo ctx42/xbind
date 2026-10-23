@@ -24,8 +24,7 @@ func Test_ErrReqStruct(t *testing.T) {
 	have := fmt.Sprintf("%+v", ErrReqStruct)
 
 	// --- Then ---
-	want := "struct or struct pointer required (ECReqStruct)"
-	assert.Equal(t, want, have)
+	assert.Equal(t, "struct or struct pointer required (ECReqStruct)", have)
 }
 
 func Test_ErrNilDst(t *testing.T) {
