@@ -844,7 +844,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "FMap: encoder not found for `xbind.ct` (ECEncoderNotFound)"
+		want := "FMap: encoder not found for `xbind.ct` (ECEncNotFound)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -864,7 +864,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "FMap: encoder not found for `func()` (ECEncoderNotFound)"
+		want := "FMap: encoder not found for `func()` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -884,7 +884,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "F: encoder not found for `func()` (ECEncoderNotFound)"
+		want := "F: encoder not found for `func()` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -898,7 +898,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "F: encoder not found for `*chan int` (ECEncoderNotFound)"
+		want := "F: encoder not found for `*chan int` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -913,7 +913,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "F: encoder not found for `func()` (ECEncoderNotFound)"
+		want := "F: encoder not found for `func()` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -1608,7 +1608,7 @@ func Test_encSliceOrArray(t *testing.T) {
 		err := encSliceOrArray(dst, "F", src, nil)
 
 		// --- Then ---
-		want := "F: encoder not found for `xbind.ct` (ECEncoderNotFound)"
+		want := "F: encoder not found for `xbind.ct` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -1804,7 +1804,7 @@ func Test_encMap(t *testing.T) {
 		err := encMap(dst, "F", src, nil)
 
 		// --- Then ---
-		want := "F: encoder not found for `xbind.ct` (ECEncoderNotFound)"
+		want := "F: encoder not found for `xbind.ct` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -1826,7 +1826,7 @@ func Test_encMap(t *testing.T) {
 		err := encMap(dst, "F", src, nil)
 
 		// --- Then ---
-		want := "F.1: encoder not found for `xbind.ct` (ECEncoderNotFound)"
+		want := "F.1: encoder not found for `xbind.ct` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -1847,7 +1847,7 @@ func Test_encMap(t *testing.T) {
 		err := encMap(dst, "F", src, nil)
 
 		// --- Then ---
-		want := "F.a: encoder not found for `chan int` (ECEncoderNotFound)"
+		want := "F.a: encoder not found for `chan int` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})

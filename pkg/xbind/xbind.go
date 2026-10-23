@@ -64,10 +64,10 @@ const (
 	ECUnkFieldPath = "ECUnkFieldPath"
 
 	// ECDecNotFound represents the missing type decoder error code.
-	ECDecNotFound = "ECDecoderNotFound"
+	ECDecNotFound = "ECDecNotFound"
 
 	// ECEncNotFound represents the missing type encoder error code.
-	ECEncNotFound = "ECEncoderNotFound"
+	ECEncNotFound = "ECEncNotFound"
 
 	// ECRequired represents the error code for a required field that was not
 	// set. Only [Decoder] sets it.

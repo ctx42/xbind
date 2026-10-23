@@ -19,6 +19,22 @@ func Test_ErrReqStructPtr(t *testing.T) {
 	assert.Equal(t, "struct pointer required (ECReqStructPtr)", have)
 }
 
+func Test_ErrDecNotFound(t *testing.T) {
+	// --- When ---
+	have := fmt.Sprintf("%+v", ErrDecNotFound)
+
+	// --- Then ---
+	assert.Equal(t, "decoder not found (ECDecNotFound)", have)
+}
+
+func Test_ErrEncNotFound(t *testing.T) {
+	// --- When ---
+	have := fmt.Sprintf("%+v", ErrEncNotFound)
+
+	// --- Then ---
+	assert.Equal(t, "encoder not found (ECEncNotFound)", have)
+}
+
 func Test_EncloseError(t *testing.T) {
 	t.Run("enclose", func(t *testing.T) {
 		// --- When ---
