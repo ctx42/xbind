@@ -488,7 +488,7 @@ func (stt *state) undo(n int) {
 // [Decoder.Decode] call resets it; stt holds the canonical paths reset so far,
 // and pth is the canonical path of dst. A key whose value fails writes no map
 // entry and adds no slice elements, and the resets it made in a map entry are
-// forgotten. A key setting a value another key set, or setting the values of a
+// undone. A key setting a value another key set, or setting the values of a
 // slice or array other keys index, or the other way round, returns an error
 // wrapping [ErrInvValue].
 func (dec *Decoder) apply(
