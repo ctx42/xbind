@@ -38,9 +38,10 @@ func WithDecAllowUnknown() DecoderOption {
 
 // WithDecMaxIndex is a [NewDecoder] option setting the largest slice or
 // array index a src key may use; a larger one is an [ErrInvValue] field
-// error. The default is [DefaultMaxIndex].
+// error. A zero n allows only index 0, and a negative n rejects every index.
+// The default is [DefaultMaxIndex].
 func WithDecMaxIndex(n int) DecoderOption {
-	return func(dec *Decoder) { dec.maxIndex = n }
+	return func(dec *Decoder) { dec.maxIndex = &n }
 }
 
 // WithDecFunc is a [NewDecoder] option decoding every value of type T with
@@ -71,7 +72,7 @@ func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 type Decoder struct {
 	tag          string // Struct field tag to use for aliasing.
 	allowUnknown bool   // Allow unknown fields.
-	maxIndex     int    // Largest index; zero means DefaultMaxIndex.
+	maxIndex     *int   // Largest index; nil means DefaultMaxIndex.
 	reg          decReg // Decoders registered with WithDecFunc.
 }
 
@@ -136,10 +137,10 @@ func (dec *Decoder) tagName() string {
 
 // indexLimit returns the largest index a src key may use.
 func (dec *Decoder) indexLimit() int {
-	if dec.maxIndex == 0 {
+	if dec.maxIndex == nil {
 		return DefaultMaxIndex
 	}
-	return dec.maxIndex
+	return *dec.maxIndex
 }
 
 // decode decodes src to the dst struct, sv and val being two views of it, and

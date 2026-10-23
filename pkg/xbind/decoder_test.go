@@ -52,7 +52,7 @@ func Test_WithDecMaxIndex(t *testing.T) {
 	WithDecMaxIndex(5)(dec)
 
 	// --- Then ---
-	assert.Equal(t, 5, dec.maxIndex)
+	assert.Equal(t, 5, *dec.maxIndex)
 }
 
 func Test_WithDecFunc(t *testing.T) {
@@ -1562,6 +1562,21 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - index limit zero", func(t *testing.T) {
+		// --- Given ---
+		dst := &TBox{}
+		src := url.Values{"list[0].size": {"1"}, "list[1].size": {"2"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(0)).Decode(dst, src)
+
+		// --- Then ---
+		want := "list[1].size: invalid value: index 1 over the limit 0 " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, []TItem{{Size: 1}}, dst.List)
+	})
+
 	t.Run("error - required inside elements", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -1946,6 +1961,14 @@ func Test_Decoder_indexLimit(t *testing.T) {
 
 		// --- Then ---
 		assert.Equal(t, 3, have)
+	})
+
+	t.Run("zero", func(t *testing.T) {
+		// --- When ---
+		have := NewDecoder(WithDecMaxIndex(0)).indexLimit()
+
+		// --- Then ---
+		assert.Equal(t, 0, have)
 	})
 }
 
