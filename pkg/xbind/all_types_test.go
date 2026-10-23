@@ -39,6 +39,7 @@ var (
 	_ encoding.TextMarshaler   = TLevel(0)
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 	_ encoding.TextMarshaler   = TFltKey{}
+	_ encoding.TextMarshaler   = TGenText[int]{}
 )
 
 // TString is a test struct with string fields.
@@ -409,6 +410,11 @@ func (tlv *TLevel) UnmarshalText(text []byte) error {
 	*tlv = TLevel(val)
 	return err
 }
+
+// TGenText is a generic type declaring its own MarshalText method.
+type TGenText[T any] struct{ V T }
+
+func (tgt TGenText[T]) MarshalText() ([]byte, error) { return nil, nil }
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.
 type TCycle struct{ *TCycle }

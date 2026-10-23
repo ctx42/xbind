@@ -459,6 +459,7 @@ func Test_declares_tabular(t *testing.T) {
 		{"value receiver", reflect.TypeFor[TTextVal](), true},
 		{"pointer receiver", reflect.TypeFor[TTextPtr](), true},
 		{"promoted", reflect.TypeFor[TPromZero](), false},
+		{"generic type", reflect.TypeFor[TGenText[int]](), true},
 		{"interface", reflect.TypeFor[encoding.TextMarshaler](), true},
 		{"none", reflect.TypeFor[TItem](), false},
 	}
