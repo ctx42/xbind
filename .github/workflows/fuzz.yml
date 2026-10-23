@@ -1,0 +1,52 @@
+# Fuzzes the decoder, the encoder and the JSON helpers weekly. A failing input
+# is uploaded as an artifact; add it to pkg/xbind/testdata/fuzz to reproduce
+# it with go test.
+
+name: Fuzz
+
+on:
+  schedule:
+    - cron: '0 3 * * 1' # Mondays at 03:00 UTC.
+  workflow_dispatch:
+
+# The workflow declares the minimum required permissions.
+# This follows the principle of least privilege.
+permissions:
+  contents: read
+
+env:
+  C42_CC_RUN_ID: github-${{ github.repository }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - Fuzz_Decoder_Decode
+          - Fuzz_Encoder_Encode
+          - Fuzz_UnmarshalJSONReader
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
+        cache: true   # Enables module caching for faster runs.
+
+    - name: Fuzz
+      run: >-
+        go test ./pkg/xbind -run '^$'
+        -fuzz '^${{ matrix.target }}$' -fuzztime 10m
+
+    - name: Upload failing input
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}
+        path: pkg/xbind/testdata/fuzz/${{ matrix.target }}
