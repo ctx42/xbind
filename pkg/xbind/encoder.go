@@ -85,12 +85,12 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // when decoded. An indexed element or a map value adding no keys, such as a nil
 // pointer, an empty slice or a struct whose fields are all empty and omitempty,
 // is not written either, so such a map entry, or such an element at the end of
-// a slice, does not decode back. A pointer to a struct already being encoded, a
-// pointer cycle, is an [ErrCycle] error keyed by the field path of the repeated
-// pointer, and a struct tag of src that does not parse, or that names a field
-// with a bracket ("ids[]"), is an [ErrInvTag] error. On error, dst keeps the
-// values encoded before the error, which may include some values of the failing
-// field.
+// a slice, does not decode back. A pointer to a struct, or a map or slice,
+// already being encoded, a cycle, is an [ErrCycle] error keyed by the field
+// path of the repeated value, and a struct tag of src that does not parse, or
+// that names a field with a bracket ("ids[]"), is an [ErrInvTag] error. On
+// error, dst keeps the values encoded before the error, which may include some
+// values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
@@ -122,9 +122,9 @@ func (enc *Encoder) tagName() string {
 }
 
 // encode encodes src to dst under the field path. The seen map holds the
-// pointers on the path to src; meeting one of them again is a pointer cycle.
-// The lvl is the level position of an embedded struct src; for any other src
-// it is the zero level.
+// pointers, maps and slices on the path to src; meeting one of them again is
+// a cycle. The lvl is the level position of an embedded struct src; for any
+// other src it is the zero level.
 func (enc *Encoder) encode(
 	dst url.Values,
 	field string,
@@ -152,6 +152,17 @@ func (enc *Encoder) encode(
 			seen[key] = true
 			defer delete(seen, key)
 			src = src.Elem()
+		}
+	}
+	if kind := src.Kind(); kind == reflect.Slice || kind == reflect.Map {
+		// A map or slice holding itself is a cycle without a pointer.
+		if src.Len() > 0 {
+			key := ptrKey{ptr: src.Pointer(), typ: src.Type(), len: src.Len()}
+			if seen[key] {
+				return fieldError(field, ErrCycle)
+			}
+			seen[key] = true
+			defer delete(seen, key)
 		}
 	}
 
@@ -225,11 +236,13 @@ func (enc *Encoder) encodeFields(
 	return nil
 }
 
-// ptrKey identifies a pointer on the encoding path. The type tells apart a
-// pointer to a struct and a pointer to its first field.
+// ptrKey identifies a pointer, map or slice on the encoding path. The type
+// tells apart a pointer to a struct and a pointer to its first field, and the
+// length a slice and the shorter slices of its array.
 type ptrKey struct {
 	ptr uintptr
 	typ reflect.Type
+	len int
 }
 
 // encSrc encodes src to dst. It returns false if the encoder for the src value

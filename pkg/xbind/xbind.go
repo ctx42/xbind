@@ -104,8 +104,8 @@ const (
 	// decoder cannot reach because it is an unexported nil pointer.
 	ECUnexported = "ECUnexported"
 
-	// ECCycle represents the error code for a pointer to a struct already
-	// being encoded. Only [Encoder] sets it.
+	// ECCycle represents the error code for a pointer to a struct, or a map
+	// or slice, already being encoded. Only [Encoder] sets it.
 	ECCycle = "ECCycle"
 
 	// ECInvTag represents the error code for a struct tag that does not
@@ -155,8 +155,8 @@ var (
 	// struct, which the decoder can neither allocate nor descend into.
 	ErrUnexported = xrr.New("unexported field", ECUnexported)
 
-	// ErrCycle represents a pointer cycle: a pointer to a struct the encoder
-	// is already encoding.
+	// ErrCycle represents a pointer cycle: a pointer to a struct, or a map or
+	// slice, the encoder is already encoding.
 	ErrCycle = xrr.New("pointer cycle", ECCycle)
 
 	// ErrUnkFieldPath represents a source key that does not match a field.

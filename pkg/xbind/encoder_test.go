@@ -1513,6 +1513,59 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Same(t, ErrCycle, err)
 	})
 
+	t.Run("error - map cycle", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			M map[string]node `url:"m"`
+		}
+		dst := url.Values{}
+
+		m := map[string]node{}
+		m["a"] = node{M: m}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, node{M: m})
+
+		// --- Then ---
+		want := "m[a].m: pointer cycle (ECCycle)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - slice cycle", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			L []node `url:"l"`
+		}
+		dst := url.Values{}
+
+		s := make([]node, 1)
+		s[0].L = s
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, node{L: s})
+
+		// --- Then ---
+		want := "l[0].l: pointer cycle (ECCycle)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("shared slice is not a cycle", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		tags := []string{"a"}
+		s := struct {
+			A []string `url:"a"`
+			B []string `url:"b"`
+		}{A: tags, B: tags}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"a": {"a"}, "b": {"a"}}, dst)
+	})
+
 	t.Run("field with pointer to own type", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
