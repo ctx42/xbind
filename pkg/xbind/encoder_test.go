@@ -1169,7 +1169,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Empty(t, dst)
 	})
 
-	t.Run("element of empty omitempty fields not written", func(t *testing.T) {
+	t.Run("element adding no keys", func(t *testing.T) {
 		// --- Given ---
 		type item struct {
 			A int `url:"a,omitempty"`
@@ -1187,7 +1187,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"l[1].a": {"1"}}, dst)
 	})
 
-	t.Run("empty slice element not written", func(t *testing.T) {
+	t.Run("empty slice element", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := struct {
@@ -1351,7 +1351,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.ErrorIs(t, ErrInvTag, err)
 	})
 
-	t.Run("embedded TextMarshaler does not hide fields", func(t *testing.T) {
+	t.Run("embedded TextMarshaler", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := struct {
@@ -1425,7 +1425,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"X": {"1"}, "Y": {"2"}}, dst)
 	})
 
-	t.Run("outer field shadows embedded field", func(t *testing.T) {
+	t.Run("shadowed embedded field", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := &struct {
@@ -1441,7 +1441,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"f_str": {"out"}, "f_int": {"2"}}, dst)
 	})
 
-	t.Run("ambiguous fields are not encoded", func(t *testing.T) {
+	t.Run("ambiguous fields", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := &TAmbig{TAmbA: TAmbA{X: "1", A: "2"}, TAmbB: TAmbB{X: "3"}}
@@ -1485,7 +1485,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"s": {"1", "2"}}, dst)
 	})
 
-	t.Run("embedded interface is skipped", func(t *testing.T) {
+	t.Run("embedded interface", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := &struct {
@@ -1520,7 +1520,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, want, dst)
 	})
 
-	t.Run("shared pointer is not a cycle", func(t *testing.T) {
+	t.Run("shared pointer", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		shared := &TNode{Val: 2}
@@ -1610,7 +1610,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, "l[0].l: pointer cycle (ECCycle)", err)
 	})
 
-	t.Run("shared slice is not a cycle", func(t *testing.T) {
+	t.Run("shared slice", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		tags := []string{"a"}
