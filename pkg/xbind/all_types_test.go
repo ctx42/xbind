@@ -538,7 +538,7 @@ type TBuilder struct {
 }
 
 // TFuzzEmb is embedded in the fuzz test types: their S field shadows its S
-// field, its E field has a key of its own.
+// field, and its E field has a key of its own.
 type TFuzzEmb struct {
 	S string `url:"s"`
 	E string `url:"e"`
