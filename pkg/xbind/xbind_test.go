@@ -19,6 +19,14 @@ func Test_ErrReqStructPtr(t *testing.T) {
 	assert.Equal(t, "struct pointer required (ECReqStructPtr)", have)
 }
 
+func Test_ErrNilDst(t *testing.T) {
+	// --- When ---
+	have := fmt.Sprintf("%+v", ErrNilDst)
+
+	// --- Then ---
+	assert.Equal(t, "nil destination (ECNilDst)", have)
+}
+
 func Test_ErrDecNotFound(t *testing.T) {
 	// --- When ---
 	have := fmt.Sprintf("%+v", ErrDecNotFound)

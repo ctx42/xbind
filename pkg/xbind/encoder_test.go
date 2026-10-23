@@ -65,6 +65,14 @@ func Test_NewEncoder(t *testing.T) {
 }
 
 func Test_Encoder_Encode(t *testing.T) {
+	t.Run("error - nil dst", func(t *testing.T) {
+		// --- When ---
+		err := NewEncoder().Encode(nil, &TString{})
+
+		// --- Then ---
+		assert.Same(t, ErrNilDst, err)
+	})
+
 	t.Run("struct", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}

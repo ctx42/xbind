@@ -105,6 +105,10 @@ const (
 	// ECInvTag represents the error code for a struct tag that does not
 	// parse.
 	ECInvTag = "ECInvTag"
+
+	// ECNilDst represents the error code for a nil [url.Values] given to
+	// [Encoder.Encode].
+	ECNilDst = "ECNilDst"
 )
 
 // Binding errors.
@@ -155,6 +159,9 @@ var (
 
 	// ErrInvTag represents a struct tag that does not parse.
 	ErrInvTag = xrr.New("invalid struct tag", ECInvTag)
+
+	// ErrNilDst represents a nil [url.Values] given to [Encoder.Encode].
+	ErrNilDst = xrr.New("nil destination", ECNilDst)
 )
 
 // checkTags returns an error wrapping [ErrInvTag], with the Go path to the
