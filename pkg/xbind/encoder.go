@@ -74,9 +74,9 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // dot, or in brackets when they contain one; map keys, and the indexes of slice
 // and array elements other than plain values, such as structs, maps, slices and
 // [Marshaler] values, in brackets ("attr[k]", "list[0].name"); plain values,
-// encoded as one text each, as values of one key. A map key that is empty or
-// holds a bracket is an [ErrInvValue] error. A [Marshaler] implemented by src,
-// or by a struct embedded in it, encodes the whole struct;
+// encoded as one text each, as values of one key. A map key that is empty,
+// holds a bracket or is a NaN is an [ErrInvValue] error. A [Marshaler]
+// implemented by src, or by a struct embedded in it, encodes the whole struct;
 // [encoding.TextMarshaler] and functions registered with [WithEncFunc] apply
 // only to values with a key, so src and the structs embedded in it are encoded
 // field by field. A nil pointer or interface adds nothing: a nil field has no
@@ -362,10 +362,10 @@ func (enc *Encoder) encodeSlice(
 	return nil
 }
 
-// encodeMap encodes the src map to dst, each value under the prefix key and
-// its map key ("attr[k]"). The keys are encoded with
-// [encoding.TextMarshaler] or the base type encoders; an empty key, or one
-// with a bracket, is an error. The seen map is passed to the encode method.
+// encodeMap encodes the src map to dst, each value under the prefix key and its
+// map key ("attr[k]"). The keys are encoded with [encoding.TextMarshaler] or
+// the base type encoders; an empty key, one with a bracket, or a NaN is an
+// error. The seen map is passed to the encode method.
 func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
@@ -393,6 +393,9 @@ func (enc *Encoder) encodeMap(
 		}
 		var format string
 		switch {
+		case isNaN(mk):
+			format = "%w: NaN map key" // Decode rejects it.
+
 		case key == "":
 			format = "%w: empty map key"
 

@@ -1151,7 +1151,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"i": {"1"}}, dst)
 	})
 
-	t.Run("map with NaN key", func(t *testing.T) {
+	t.Run("error - map with NaN key", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		s := &struct {
@@ -1162,8 +1162,10 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, url.Values{"M[NaN]": {"x"}}, dst)
+		assert.ErrorIs(t, ErrInvValue, err)
+		want := "M: invalid value: NaN map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Empty(t, dst)
 	})
 
 	t.Run("registered encoder", func(t *testing.T) {
