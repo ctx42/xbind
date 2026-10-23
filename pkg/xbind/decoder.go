@@ -566,8 +566,7 @@ func (dec *Decoder) apply(
 			const format = "%w: NaN map key"
 			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 		}
-		reg := dec.reg[indirect(kt)] != nil
-		ent := stt.entry(pth, key, stp.key, reg)
+		ent := stt.entry(pth, key, stp.key, dec.reg[indirect(kt)] != nil)
 		key = ent.key
 		kpt := pth + "[" + ent.text + "]"
 		val := reflect.New(dst.Type().Elem()).Elem()
