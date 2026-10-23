@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,20 +92,17 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"f_a_p_str=FapStr0&" +
-			"f_a_p_str=FapStr1&" +
-			"f_a_str=FaStr0&" +
-			"f_a_str=FaStr1&" +
-			"f_m_int_str.1=FmStr1&" +
-			"f_m_int_str.3=FmStr3&" +
-			"f_p_str=FpStr&" +
-			"f_s_p_str=FspStr0&" +
-			"f_s_p_str=FspStr1&" +
-			"f_s_str=FsStr0&" +
-			"f_s_str=FsStr1&" +
-			"f_str=FStr"
-		assert.Equal(t, want, dst.Encode())
+		want := url.Values{
+			"f_a_p_str":      {"FapStr0", "FapStr1"},
+			"f_a_str":        {"FaStr0", "FaStr1"},
+			"f_m_int_str[1]": {"FmStr1"},
+			"f_m_int_str[3]": {"FmStr3"},
+			"f_p_str":        {"FpStr"},
+			"f_s_p_str":      {"FspStr0", "FspStr1"},
+			"f_s_str":        {"FsStr0", "FsStr1"},
+			"f_str":          {"FStr"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("struct with anonymous field", func(t *testing.T) {
@@ -418,11 +416,12 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"FStr=xyz&" +
-			"f_mar.f_str=mar_a&" +
-			"f_mar.f_str=mar_b"
-		assert.Equal(t, want, dst.Encode())
+		want := url.Values{
+			"FStr":           {"xyz"},
+			"f_mar[0].f_str": {"mar_a"},
+			"f_mar[1].f_str": {"mar_b"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("map with elements implementing marshaler", func(t *testing.T) {
@@ -441,11 +440,12 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"FStr=xyz&" +
-			"f_mar.A.f_str=mar_a&" +
-			"f_mar.B.f_str=mar_b"
-		assert.Equal(t, want, dst.Encode())
+		want := url.Values{
+			"FStr":           {"xyz"},
+			"f_mar[A].f_str": {"mar_a"},
+			"f_mar[B].f_str": {"mar_b"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("omitempty", func(t *testing.T) {
@@ -553,12 +553,13 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"f_s_mar.f_str=mar_a&" +
-			"f_s_mar.f_str=mar_b&" +
-			"f_s_p_mar.f_str=mar_c&" +
-			"f_s_p_mar.f_str=mar_d"
-		assert.Equal(t, want, dst.Encode())
+		want := url.Values{
+			"f_s_mar[0].f_str":   {"mar_a"},
+			"f_s_mar[1].f_str":   {"mar_b"},
+			"f_s_p_mar[0].f_str": {"mar_c"},
+			"f_s_p_mar[1].f_str": {"mar_d"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("struct with map of Marshaler", func(t *testing.T) {
@@ -580,12 +581,13 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := "" +
-			"f_m_mar.1.f_str=mar_a&" +
-			"f_m_mar.2.f_str=mar_b&" +
-			"f_m_p_mar.3.f_str=mar_c&" +
-			"f_m_p_mar.4.f_str=mar_d"
-		assert.Equal(t, want, dst.Encode())
+		want := url.Values{
+			"f_m_mar[1].f_str":   {"mar_a"},
+			"f_m_mar[2].f_str":   {"mar_b"},
+			"f_m_p_mar[3].f_str": {"mar_c"},
+			"f_m_p_mar[4].f_str": {"mar_d"},
+		}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("struct with TextMarshaler field", func(t *testing.T) {
@@ -676,7 +678,8 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "A=1&M.k=v&S=a", dst.Encode())
+		want := url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("pointers to slice array and map fields", func(t *testing.T) {
@@ -700,7 +703,8 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "A=1&M.k=v&S=a", dst.Encode())
+		want := url.Values{"A": {"1"}, "M[k]": {"v"}, "S": {"a"}}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("omitempty struct with unexported fields", func(t *testing.T) {
@@ -794,7 +798,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "M.A=x", dst.Encode())
+		assert.Equal(t, url.Values{"M[A]": {"x"}}, dst)
 	})
 
 	t.Run("map with slice values", func(t *testing.T) {
@@ -809,7 +813,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "M.a=x&M.a=y", dst.Encode())
+		assert.Equal(t, url.Values{"M[a]": {"x", "y"}}, dst)
 	})
 
 	t.Run("zero value encoder", func(t *testing.T) {
@@ -888,7 +892,7 @@ func Test_Encoder_Encode(t *testing.T) {
 		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
-		want := "FMap: encoder not found for `func()` (ECEncNotFound)"
+		want := "FMap[0]: encoder not found for `func()` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -954,7 +958,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		want := "encoder not found for `chan int`"
-		xrrtest.AssertFieldEqual(t, "s", want, err)
+		xrrtest.AssertFieldEqual(t, "s[0]", want, err)
 	})
 
 	t.Run("map with pointer receiver TextMarshalers", func(t *testing.T) {
@@ -973,7 +977,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, url.Values{"V.a": {"A"}, "K.B": {"1"}}, dst)
+		assert.Equal(t, url.Values{"V[a]": {"A"}, "K[B]": {"1"}}, dst)
 	})
 
 	t.Run("embedded colliding unexported marshalers", func(t *testing.T) {
@@ -1159,7 +1163,7 @@ func Test_Encoder_Encode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, url.Values{"M.NaN": {"x"}}, dst)
+		assert.Equal(t, url.Values{"M[NaN]": {"x"}}, dst)
 	})
 
 	t.Run("registered encoder", func(t *testing.T) {
@@ -1199,15 +1203,97 @@ func Test_Encoder_Encode(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		want := url.Values{
-			"t":             {"2026-01-02"},
-			"tp":            {"2026-01-02"},
-			"ts":            {"2026-01-02"},
-			"tk.2026-01-02": {"k"},
-			"p":             {"1,2"},
-			"pp":            {"3,4"},
-			"l":             {"9"},
+			"t":              {"2026-01-02"},
+			"tp":             {"2026-01-02"},
+			"ts":             {"2026-01-02"},
+			"tk[2026-01-02]": {"k"},
+			"p":              {"1,2"},
+			"pp":             {"3,4"},
+			"l":              {"9"},
 		}
 		assert.Equal(t, want, dst)
+	})
+
+	t.Run("containers of structs", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := &TBox{
+			Items: map[string]TItem{
+				"a":   {Size: 1, Name: "x"},
+				"c.d": {Size: 3},
+			},
+			PItems: map[string]*TItem{"a": {Size: 2}},
+			List:   []TItem{{Size: 1}, {Size: 2, Name: "b"}},
+			PList:  []*TItem{nil, {Size: 3}},
+			Arr:    [2]TItem{{}, {Size: 2}},
+			Nest:   map[string][]TItem{"a": {{Size: 1}}},
+			Grid:   [][]int{{1}, {3, 4}},
+			Attr:   map[string]string{"a.b": "y", "k": "v"},
+			Dotted: 10,
+		}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"items[a].size":   {"1"},
+			"items[a].name":   {"x"},
+			"items[c.d].size": {"3"},
+			"items[c.d].name": {""},
+			"pitems[a].size":  {"2"},
+			"pitems[a].name":  {""},
+			"list[0].size":    {"1"},
+			"list[0].name":    {""},
+			"list[1].size":    {"2"},
+			"list[1].name":    {"b"},
+			"plist[1].size":   {"3"},
+			"plist[1].name":   {""},
+			"arr[0].size":     {"0"},
+			"arr[0].name":     {""},
+			"arr[1].size":     {"2"},
+			"arr[1].name":     {""},
+			"nest[a][0].size": {"1"},
+			"nest[a][0].name": {""},
+			"grid[0]":         {"1"},
+			"grid[1]":         {"3", "4"},
+			"attr[a.b]":       {"y"},
+			"attr[k]":         {"v"},
+			"[page.size]":     {"10"},
+		}
+		assert.Equal(t, want, dst)
+
+		have := &TBox{}
+		assert.NoError(t, NewDecoder().Decode(have, dst))
+		assert.Equal(t, src, have)
+	})
+
+	t.Run("error - map key with a bracket", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := &TBox{Attr: map[string]string{"a]": "x"}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		want := "attr: invalid value: map key with a bracket (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - tag name with a bracket", func(t *testing.T) {
+		// --- Given ---
+		src := &struct {
+			F int `url:"a[b]"`
+		}{}
+
+		// --- When ---
+		err := NewEncoder().Encode(url.Values{}, src)
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid struct tag: F: bracket in name", err)
+		assert.ErrorIs(t, ErrInvTag, err)
 	})
 
 	t.Run("embedded TextMarshaler does not hide fields", func(t *testing.T) {
@@ -1494,8 +1580,14 @@ func Fuzz_Encoder_Encode(f *testing.F) {
 		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, src)
 
 		// --- Then ---
-		if mk == "" {
+		switch {
+		case mk == "":
 			want := "invalid value: empty map key"
+			xrrtest.AssertFieldEqual(t, "m", want, err)
+			return
+
+		case strings.ContainsAny(mk, "[]"):
+			want := "invalid value: map key with a bracket"
 			xrrtest.AssertFieldEqual(t, "m", want, err)
 			return
 		}
@@ -1748,7 +1840,7 @@ func Test_isMarshaler_tabular(t *testing.T) {
 	}
 }
 
-func Test_encSliceOrArray(t *testing.T) {
+func Test_Encoder_encodeSlice(t *testing.T) {
 	t.Run("custom encoder", func(t *testing.T) {
 		// --- Given ---
 		type ct struct{ a string }
@@ -1761,7 +1853,12 @@ func Test_encSliceOrArray(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encSliceOrArray(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeSlice(
+			dst,
+			"F",
+			src,
+			map[ptrKey]bool{},
+		)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1770,18 +1867,17 @@ func Test_encSliceOrArray(t *testing.T) {
 
 	t.Run("error - encoder not found", func(t *testing.T) {
 		// --- Given ---
-		type ct struct{ a string }
 		dst := url.Values{}
 		s := &struct {
-			F []ct `url:"-"`
-		}{F: []ct{{a: "abc"}, {a: "xyz"}}}
+			F []chan int `url:"-"`
+		}{F: []chan int{make(chan int)}}
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		err := encSliceOrArray(dst, "F", src, nil)
+		err := (&Encoder{}).encodeSlice(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
-		want := "F: encoder not found for `xbind.ct` (ECEncNotFound)"
+		want := "F[0]: encoder not found for `chan int` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -1802,15 +1898,20 @@ func Test_encSliceOrArray(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encSliceOrArray(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeSlice(
+			dst,
+			"F",
+			src,
+			map[ptrKey]bool{},
+		)
 
 		// --- Then ---
-		assert.ErrorEqual(t, "F.1: msg", err)
+		assert.ErrorEqual(t, "F[1]: msg", err)
 		assert.Equal(t, "F=enc_abc", dst.Encode())
 	})
 }
 
-func Test_encSliceOrArray_tabular(t *testing.T) {
+func Test_Encoder_encodeSlice_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
 
@@ -1870,7 +1971,12 @@ func Test_encSliceOrArray_tabular(t *testing.T) {
 			src := reflectkit.GetValue(t, tc.s, "F")
 
 			// --- When ---
-			err := encSliceOrArray(dst, tc.prefix, src, nil)
+			err := (&Encoder{}).encodeSlice(
+				dst,
+				tc.prefix,
+				src,
+				map[ptrKey]bool{},
+			)
 
 			// --- Then ---
 			assert.NoError(t, err)
@@ -1879,7 +1985,7 @@ func Test_encSliceOrArray_tabular(t *testing.T) {
 	}
 }
 
-func Test_encMap(t *testing.T) {
+func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("nil key and nil value", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -1887,7 +1993,7 @@ func Test_encMap(t *testing.T) {
 		src := reflect.ValueOf(map[*TLevel]*int{nil: new(1), &lvl: nil})
 
 		// --- When ---
-		err := encMap(dst, "M", src, nil)
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1901,7 +2007,7 @@ func Test_encMap(t *testing.T) {
 		src := reflect.ValueOf(map[encoding.TextMarshaler]int{key: 1})
 
 		// --- When ---
-		err := encMap(dst, "M", src, nil)
+		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1927,11 +2033,12 @@ func Test_encMap(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encMap(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "F.enc_abc=1&F.enc_xyz=2", dst.Encode())
+		want := url.Values{"F[enc_abc]": {"1"}, "F[enc_xyz]": {"2"}}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("custom value encoder", func(t *testing.T) {
@@ -1953,11 +2060,12 @@ func Test_encMap(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encMap(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.Equal(t, "F.1=enc_abc&F.2=enc_xyz", dst.Encode())
+		want := url.Values{"F[1]": {"enc_abc"}, "F[2]": {"enc_xyz"}}
+		assert.Equal(t, want, dst)
 	})
 
 	t.Run("error - key encoder not found", func(t *testing.T) {
@@ -1974,7 +2082,7 @@ func Test_encMap(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		err := encMap(dst, "F", src, nil)
+		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		want := "F: encoder not found for `xbind.ct` (ECEncNotFound)"
@@ -1984,22 +2092,19 @@ func Test_encMap(t *testing.T) {
 
 	t.Run("error - value encoder not found", func(t *testing.T) {
 		// --- Given ---
-		type ct struct{ a string }
 		dst := url.Values{}
 		s := &struct {
-			F map[int]ct
+			F map[int]chan int
 		}{
-			map[int]ct{
-				1: {a: "abc"},
-			},
+			map[int]chan int{1: make(chan int)},
 		}
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		err := encMap(dst, "F", src, nil)
+		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
-		want := "F.1: encoder not found for `xbind.ct` (ECEncNotFound)"
+		want := "F[1]: encoder not found for `chan int` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -2017,10 +2122,10 @@ func Test_encMap(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		err := encMap(dst, "F", src, nil)
+		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
-		want := "F.a: encoder not found for `chan int` (ECEncNotFound)"
+		want := "F[a][0]: encoder not found for `chan int` (ECEncNotFound)"
 		xrrtest.AssertEqual(t, want, err)
 		assert.Equal(t, "", dst.Encode())
 	})
@@ -2048,7 +2153,7 @@ func Test_encMap(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encMap(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
 		xrrtest.AssertEqual(t, "F: msg (ECGeneric)", err)
@@ -2077,26 +2182,26 @@ func Test_encMap(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		err := encMap(dst, "F", src, reg)
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
 
 		// --- Then ---
-		xrrtest.AssertEqual(t, "F.2: msg (ECGeneric)", err)
+		xrrtest.AssertEqual(t, "F[2]: msg (ECGeneric)", err)
 	})
 }
 
-func Test_encMap_tabular(t *testing.T) {
+func Test_Encoder_encodeMap_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
 
 		s      any
 		prefix string
-		want   string
+		want   url.Values
 	}{
 		{
 			"map integers to strings",
 			&struct{ F map[int]string }{F: map[int]string{1: "abc", 2: "def"}},
 			"F",
-			"F.1=abc&F.2=def",
+			url.Values{"F[1]": {"abc"}, "F[2]": {"def"}},
 		},
 		{
 			"map integers to pointers to strings",
@@ -2109,7 +2214,7 @@ func Test_encMap_tabular(t *testing.T) {
 				},
 			},
 			"F",
-			"F.1=abc&F.2=def",
+			url.Values{"F[1]": {"abc"}, "F[2]": {"def"}},
 		},
 		{
 			"map pointers to integers to pointers to strings",
@@ -2122,7 +2227,7 @@ func Test_encMap_tabular(t *testing.T) {
 				},
 			},
 			"F",
-			"F.1=abc&F.2=def",
+			url.Values{"F[1]": {"abc"}, "F[2]": {"def"}},
 		},
 	}
 
@@ -2133,11 +2238,45 @@ func Test_encMap_tabular(t *testing.T) {
 			src := reflectkit.GetValue(t, tc.s, "F")
 
 			// --- When ---
-			err := encMap(dst, tc.prefix, src, nil)
+			err := (&Encoder{}).encodeMap(
+				dst,
+				tc.prefix,
+				src,
+				map[ptrKey]bool{},
+			)
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, dst.Encode())
+			assert.Equal(t, tc.want, dst)
+		})
+	}
+}
+
+func Test_Encoder_isValueType_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"registered", reflect.TypeFor[TPoint](), true},
+		{"pointer to registered", reflect.TypeFor[*TPoint](), true},
+		{"marshaler", reflect.TypeFor[TMarValVal](), false},
+		{"pointer receiver marshaler", reflect.TypeFor[TMarValPtr](), false},
+		{"text marshaler", reflect.TypeFor[TTextVal](), true},
+		{"pointer receiver text marshaler", reflect.TypeFor[TTextPtr](), true},
+		{"base type", reflect.TypeFor[int](), true},
+		{"struct", reflect.TypeFor[TItem](), false},
+		{"function", reflect.TypeFor[func()](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder(WithEncFunc(encPoint)).isValueType(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
 		})
 	}
 }

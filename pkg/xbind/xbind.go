@@ -175,11 +175,11 @@ var (
 
 // checkTags returns an error wrapping [ErrInvTag], with the Go path to the
 // field, for the first field of the typ struct, or of a struct it nests or
-// embeds, whose struct tag does not parse; the tag of every key counts, as
-// mirror parses the tag as a whole. The key tag decides which fields are
-// ignored. Unexported fields, other than embedded ones, are skipped, as
-// [Decoder] and [Encoder] skip them. The seen map holds the struct types
-// checked so far, so a recursive type ends.
+// embeds, whose struct tag does not parse, or whose key tag names it with a
+// bracket; the tag of every key counts, as mirror parses the tag as a whole.
+// The key tag decides which fields are ignored. Unexported fields, other than
+// embedded ones, are skipped, as [Decoder] and [Encoder] skip them. The seen
+// map holds the struct types checked so far, so a recursive type ends.
 func checkTags(
 	prefix string,
 	typ reflect.Type,
@@ -201,6 +201,10 @@ func checkTags(
 		if err != nil {
 			code := xrr.WithCode(ECInvTag)
 			return xrr.Newf("%w: %s", ErrInvTag, pth, code)
+		}
+		if strings.ContainsAny(tag.Name(), "[]") {
+			const format = "%w: %s: bracket in name"
+			return xrr.Newf(format, ErrInvTag, pth, xrr.WithCode(ECInvTag))
 		}
 		if tag.IsIgnored() || indirect(fld.Type()).Kind() != reflect.Struct {
 			continue

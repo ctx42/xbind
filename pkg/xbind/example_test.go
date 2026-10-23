@@ -89,9 +89,10 @@ func ExampleEncoder_Encode() {
 		panic(err)
 	}
 
-	fmt.Println(dst.Encode())
+	qry, _ := url.QueryUnescape(dst.Encode())
+	fmt.Println(qry)
 	// Output:
-	// attr.color=red&name=report&page.size=10&tag=a&tag=b
+	// attr[color]=red&name=report&page.size=10&tag=a&tag=b
 }
 
 func ExampleUnmarshalJSON() {

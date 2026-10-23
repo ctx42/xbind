@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/ctx42/xrr/pkg/xrr"
 
@@ -146,10 +147,10 @@ func (enc *Encoder) encode(
 
 	switch src.Kind() { //nolint:exhaustive
 	case reflect.Slice, reflect.Array:
-		return encSliceOrArray(dst, field, src, enc.reg)
+		return enc.encodeSlice(dst, field, src, seen)
 
 	case reflect.Map:
-		return encMap(dst, field, src, enc.reg)
+		return enc.encodeMap(dst, field, src, seen)
 
 	case reflect.Struct:
 		return enc.encodeFields(dst, field, src, seen, lvl)
@@ -206,7 +207,7 @@ func (enc *Encoder) encodeFields(
 			continue
 		}
 
-		fldPath := buildPath(field, name)
+		fldPath := fieldPath(field, name)
 		if err := enc.encode(dst, fldPath, val, seen, level{}); err != nil {
 			return err
 		}
@@ -307,35 +308,45 @@ func isMarshaler(typ reflect.Type) bool {
 	return typ.Implements(iMarshaler) || typ.Implements(iTextMarshaler)
 }
 
-// encSliceOrArray encodes the src slice or array to dst.
-func encSliceOrArray(
+// encodeSlice encodes the src slice or array to dst. Elements encoded as one
+// value (see isValueType) are added as values of the prefix key; any other
+// element, a struct, a map or a [Marshaler], is encoded under the prefix key
+// and its index ("list[0]"). The seen map is passed to the encode method.
+func (enc *Encoder) encodeSlice(
 	dst url.Values,
 	prefix string,
 	src reflect.Value,
-	reg encReg,
+	seen map[ptrKey]bool,
 ) error {
 
+	value := enc.isValueType(src.Type().Elem())
 	for i := 0; i < src.Len(); i++ {
 		val := src.Index(i)
-		ok, err := encSrc(dst, prefix, val, reg)
-		if !ok {
-			return fieldError(prefix, encNotFound(val.Type()))
+		ipt := prefix + "[" + strconv.Itoa(i) + "]"
+		if value {
+			if ok, err := encSrc(dst, prefix, val, enc.reg); ok {
+				if err != nil {
+					return xrr.NewFieldError(ipt, err)
+				}
+				continue
+			}
 		}
-		if err != nil {
-			return xrr.NewFieldError(buildPath(prefix, strconv.Itoa(i)), err)
+		if err := enc.encode(dst, ipt, val, seen, level{}); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// encMap encodes the src map to dst. The keys are encoded with
-// [encoding.TextMarshaler] or the base type encoders, the values like slice
-// elements, or as slices.
-func encMap(
+// encodeMap encodes the src map to dst, each value under the prefix key and
+// its map key ("attr[k]"). The keys are encoded with
+// [encoding.TextMarshaler] or the base type encoders; an empty key, or one
+// with a bracket, is an error. The seen map is passed to the encode method.
+func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
 	src reflect.Value,
-	reg encReg,
+	seen map[ptrKey]bool,
 ) error {
 
 	for it := src.MapRange(); it.Next(); {
@@ -343,34 +354,46 @@ func encMap(
 		if isNil(mk) || mk.Kind() == reflect.Interface && isNil(mk.Elem()) {
 			continue // A nil key adds nothing.
 		}
-		key, err := encMapKey(mk, reg)
+		key, err := encMapKey(mk, enc.reg)
 		if err != nil {
 			return fieldError(prefix, err)
 		}
-		if key == "" {
-			const format = "%w: empty map key"
+		var format string
+		switch {
+		case key == "":
+			format = "%w: empty map key"
+		case strings.ContainsAny(key, "[]"):
+			format = "%w: map key with a bracket"
+		}
+		if format != "" {
 			err = xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 			return fieldError(prefix, err)
 		}
-
-		mvv := addressable(it.Value())
-		pth := buildPath(prefix, key)
-		if ok, err := encSrc(dst, pth, mvv, reg); ok {
-			if err != nil {
-				return xrr.NewFieldError(pth, err)
-			}
-			continue
+		pth := prefix + "[" + key + "]"
+		val := addressable(it.Value())
+		if err = enc.encode(dst, pth, val, seen, level{}); err != nil {
+			return err
 		}
-
-		if knd := mvv.Kind(); knd == reflect.Slice || knd == reflect.Array {
-			if err = encSliceOrArray(dst, pth, mvv, reg); err != nil {
-				return err
-			}
-			continue
-		}
-		return xrr.NewFieldError(pth, encNotFound(mvv.Type()))
 	}
 	return nil
+}
+
+// isValueType returns true if a value of the typ type, or a pointer to one,
+// is encoded as one text value: by a registered encoder, by its
+// [encoding.TextMarshaler], or by a built-in encoder. A [Marshaler] is not.
+func (enc *Encoder) isValueType(typ reflect.Type) bool {
+	typ = indirect(typ)
+	if enc.reg.lookup(typ) != nil {
+		return true
+	}
+	ptr := reflect.PointerTo(typ)
+	if typ.Implements(iMarshaler) || ptr.Implements(iMarshaler) {
+		return false
+	}
+	if typ.Implements(iTextMarshaler) || ptr.Implements(iTextMarshaler) {
+		return true
+	}
+	return encFor(typ, enc.reg) != nil
 }
 
 // encMapKey encodes the map key to a string. The key must not be nil or an
