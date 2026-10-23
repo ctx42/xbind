@@ -1726,7 +1726,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 11, dst.A[0].B)
 	})
 
-	t.Run("index limit option", func(t *testing.T) {
+	t.Run("error - index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
 		src := url.Values{"list[3].size": {"1"}}
@@ -2295,6 +2295,59 @@ func Test_Decoder_plan(t *testing.T) {
 }
 
 func Test_Decoder_index(t *testing.T) {
+	t.Run("error - not a number", func(t *testing.T) {
+		// --- When ---
+		have, err := NewDecoder().index(reflect.TypeFor[[]int](), "x")
+
+		// --- Then ---
+		want := "invalid field path"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
+	})
+
+	t.Run("error - negative", func(t *testing.T) {
+		// --- When ---
+		have, err := NewDecoder().index(reflect.TypeFor[[]int](), "-1")
+
+		// --- Then ---
+		want := "invalid field path"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
+	})
+
+	t.Run("error - over the limit", func(t *testing.T) {
+		// --- When ---
+		have, err := NewDecoder().index(reflect.TypeFor[[]int](), "1001")
+
+		// --- Then ---
+		want := "invalid value: index 1001 over the limit 1000"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
+	})
+
+	t.Run("error - overflow", func(t *testing.T) {
+		// --- Given ---
+		txt := "99999999999999999999"
+
+		// --- When ---
+		have, err := NewDecoder().index(reflect.TypeFor[[]int](), txt)
+
+		// --- Then ---
+		want := "invalid value: index " + txt + " over the limit 1000"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
+	})
+
+	t.Run("error - past array end", func(t *testing.T) {
+		// --- When ---
+		have, err := NewDecoder().index(reflect.TypeFor[[2]int](), "2")
+
+		// --- Then ---
+		want := "invalid value: index 2 past the array end"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0, have)
+	})
+
 	t.Run("error - largest int", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(WithDecMaxIndex(math.MaxInt))
@@ -2331,48 +2384,6 @@ func Test_Decoder_index_tabular(t *testing.T) {
 			// --- Then ---
 			assert.NoError(t, err)
 			assert.Equal(t, tc.want, have)
-		})
-	}
-}
-
-func Test_Decoder_index_errors_tabular(t *testing.T) {
-	tt := []struct {
-		testN string
-
-		typ  reflect.Type
-		txt  string
-		want string
-	}{
-		{"not a number", reflect.TypeFor[[]int](), "x", "invalid field path"},
-		{"negative", reflect.TypeFor[[]int](), "-1", "invalid field path"},
-		{
-			"over the limit",
-			reflect.TypeFor[[]int](),
-			"1001",
-			"invalid value: index 1001 over the limit 1000",
-		},
-		{
-			"overflow",
-			reflect.TypeFor[[]int](),
-			"99999999999999999999",
-			"invalid value: index 99999999999999999999 over the limit 1000",
-		},
-		{
-			"past array end",
-			reflect.TypeFor[[2]int](),
-			"2",
-			"invalid value: index 2 past the array end",
-		},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.testN, func(t *testing.T) {
-			// --- When ---
-			have, err := NewDecoder().index(tc.typ, tc.txt)
-
-			// --- Then ---
-			assert.ErrorEqual(t, tc.want, err)
-			assert.Equal(t, 0, have)
 		})
 	}
 }
