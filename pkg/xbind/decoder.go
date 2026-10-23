@@ -490,7 +490,7 @@ func (dec *Decoder) apply(
 		stt.markReset(pth, reflect.Value{})
 		ok, err := setDst(dst, dec.reg, vls...)
 		if !ok {
-			return decNotFound(dst.Type())
+			err = decNotFound(dst.Type())
 		}
 		if err != nil {
 			stt.failed[pth] = true

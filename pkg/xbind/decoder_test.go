@@ -1731,6 +1731,21 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - alias no decoder kept over required", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			F chan int `url:"f,required"`
+		}{}
+		src := url.Values{"[f]": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "[f]: decoder not found for `chan int` (ECDecNotFound)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("error - required under a registered map key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
