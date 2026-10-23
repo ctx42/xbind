@@ -204,17 +204,21 @@ func indirect(typ reflect.Type) reflect.Type {
 }
 
 // baseType returns the type typ holds through pointers, slices, arrays and
-// maps, at any depth; for any other type it returns typ.
+// maps, at any depth; for any other type it returns typ. For a type holding
+// itself, such as a map of its own type, it returns the first type met twice.
 func baseType(typ reflect.Type) reflect.Type {
-	for {
+	seen := make(map[reflect.Type]bool)
+	for !seen[typ] {
 		switch typ.Kind() { //nolint:exhaustive
 		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+			seen[typ] = true
 			typ = typ.Elem()
 
 		default:
 			return typ
 		}
 	}
+	return typ
 }
 
 // addressable returns an addressable copy of val.

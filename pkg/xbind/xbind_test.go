@@ -131,6 +131,7 @@ func Test_checkTags_tabular(t *testing.T) {
 		{"valid", reflect.TypeFor[TString]()},
 		{"pointer", reflect.TypeFor[*TMultiEmbedded]()},
 		{"recursive", reflect.TypeFor[TNode]()},
+		{"recursive map", reflect.TypeFor[struct{ M TRecMap }]()},
 		{"unexported field", reflect.TypeFor[TNotExpEmb]()},
 		{"ignored field", ignored},
 	}

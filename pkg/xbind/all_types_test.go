@@ -437,6 +437,13 @@ type TDouble struct {
 	TWrapB
 }
 
+// Types holding themselves, so a walk over the types they hold can loop.
+type (
+	TRecMap   map[string]TRecMap
+	TRecSlice []TRecSlice
+	TRecPtr   *TRecPtr
+)
+
 // TItem is a struct used as an element of maps, slices and arrays.
 type TItem struct {
 	Size int    `url:"size"`

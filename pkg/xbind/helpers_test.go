@@ -398,6 +398,21 @@ func Test_baseType_tabular(t *testing.T) {
 			reflect.TypeFor[*map[string][]*[2]TItem](),
 			reflect.TypeFor[TItem](),
 		},
+		{
+			"recursive map",
+			reflect.TypeFor[TRecMap](),
+			reflect.TypeFor[TRecMap](),
+		},
+		{
+			"recursive slice",
+			reflect.TypeFor[*TRecSlice](),
+			reflect.TypeFor[TRecSlice](),
+		},
+		{
+			"recursive pointer",
+			reflect.TypeFor[TRecPtr](),
+			reflect.TypeFor[TRecPtr](),
+		},
 	}
 
 	for _, tc := range tt {
