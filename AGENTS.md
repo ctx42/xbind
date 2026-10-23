@@ -13,8 +13,9 @@ strictly. There is no executable. It has two packages:
 - `pkg/xbind/xbindtest` — `MustDecode` and `MustEncode`, which panic on
   error.
 
-Dependencies are limited to ctx42 modules (`mirror`, `xrr`, and, in tests,
-`testing` and `testkit`). Do not add third-party modules.
+Dependencies are limited to ctx42 modules: `mirror` and `xrr`, `testing` in
+tests and in `xbindtest`, and `testkit` in tests. Do not add third-party
+modules.
 
 ## Commands
 

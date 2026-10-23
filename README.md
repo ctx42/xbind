@@ -122,11 +122,13 @@ Tag options:
 |--------------------|---------------------------------------------------|
 | `url:"-"`          | The field is never decoded or encoded.            |
 | `url:",required"`  | `Decode` reports the field when it is left empty. |
-| `url:",omitempty"` | `Encode` skips the field when it is empty.        |
+| `url:",omitempty"` | `Encode` skips the field when it is zero.         |
 
 A required field is empty when it is a zero number, an empty string, slice or
-map, a nil pointer, or a struct whose fields are all zero; a `bool` is never
-empty. The fields of a nil struct pointer are not checked.
+map, a nil pointer or a pointer to an empty value, or a struct whose fields are
+all zero; a `bool` is never empty. The fields of a nil struct pointer are not
+checked. `omitempty` skips a zero value, `false` and a nil pointer included, an
+empty slice or map, and a value whose `IsZero` method reports it zero.
 
 A different tag name is set with `WithDecTag` and `WithEncTag`.
 
@@ -235,7 +237,9 @@ dec := xbind.NewDecoder(xbind.WithDecFunc(func(s string) (time.Time, error) {
 `UnmarshalJSONBody` decodes a request body and closes it; `UnmarshalJSON` and
 `UnmarshalJSONReader` decode a byte slice and a reader. Unknown fields and data
 after the JSON value are errors, and decoding errors are translated by `HUE`
-into errors under the `ErrBind` or `xrr.ErrInvJSON` lead error:
+into errors under the `ErrBind` or `xrr.ErrInvJSON` lead error. A nil or
+non-pointer dst returns the `json.InvalidUnmarshalError` as is, and a nil
+reader, request or body returns `ErrBind` itself:
 
 <!-- gmmce:pkg/xbind/ExampleUnmarshalJSON -->
 ```go

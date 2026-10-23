@@ -131,14 +131,15 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // an [ErrInvValue] field error. A nil pointer to a nested struct is allocated
 // only when a src key leads into it. A field with the "required" option is an
 // [ErrRequired] error when it is empty after decoding: a zero number, an empty
-// string, slice or map, a nil pointer, or a zero struct; a bool is never empty.
-// The required fields of a nil struct pointer, an absent struct, are not
-// checked; those of the structs in maps, slices and arrays are, under paths
-// like "items[k].name". A src key leading into an embedded nil pointer to a
-// struct, which the decoder cannot allocate because the field is unexported, is
-// an [ErrUnexported] field error. A struct tag of dst that does not parse, or
-// that names a field with a bracket ("ids[]") or an embedded struct, is an
-// [ErrInvTag] error. Pointers to pointers to structs are not supported.
+// string, slice or map, a nil pointer or a pointer to an empty value, or a zero
+// struct; a bool is never empty. The required fields of a nil struct pointer,
+// an absent struct, are not checked; those of the structs in maps, slices and
+// arrays are, under paths like "items[k].name". A src key leading into an
+// embedded nil pointer to a struct, which the decoder cannot allocate because
+// the field is unexported, is an [ErrUnexported] field error. A struct tag of
+// dst that does not parse, or that names a field with a bracket ("ids[]") or an
+// embedded struct, is an [ErrInvTag] error. Pointers to pointers to structs are
+// not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
