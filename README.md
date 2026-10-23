@@ -92,11 +92,15 @@ in the path; an untagged field uses its Go name.
 
 Tag options:
 
-| Option             | Effect                                          |
-|--------------------|-------------------------------------------------|
-| `url:"-"`          | The field is never decoded or encoded.          |
-| `url:",required"`  | `Decode` reports the field when no key sets it. |
-| `url:",omitempty"` | `Encode` skips the field when it is empty.      |
+| Option             | Effect                                            |
+|--------------------|---------------------------------------------------|
+| `url:"-"`          | The field is never decoded or encoded.            |
+| `url:",required"`  | `Decode` reports the field when it is left empty. |
+| `url:",omitempty"` | `Encode` skips the field when it is empty.        |
+
+A required field is empty when it is a zero number, an empty string, slice or
+map, a nil pointer, or a struct whose fields are all zero; a `bool` is never
+empty. The fields of a nil struct pointer are not checked.
 
 A different tag name is set with `WithDecTag` and `WithEncTag`.
 

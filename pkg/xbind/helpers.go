@@ -4,6 +4,7 @@
 package xbind
 
 import (
+	"database/sql/driver"
 	"reflect"
 )
 
@@ -107,6 +108,52 @@ func hasNilEmbedded(v reflect.Value, seen map[uintptr]bool) bool {
 		}
 	}
 	return false
+}
+
+// isEmpty returns true if v is empty: a zero number; a nil or zero-length
+// string, array, slice, map or channel; a nil pointer, interface or function;
+// a pointer or interface to an empty value; a value whose IsZero method
+// returns true or whose [driver.Valuer] value is empty; any other zero value.
+// A bool is never empty. The rules are those of IsEmpty in the
+// github.com/ctx42/verax package. Methods are called only when v can be
+// interfaced.
+func isEmpty(v reflect.Value) bool {
+	if !v.IsValid() {
+		return true
+	}
+	switch v.Kind() { //nolint:exhaustive
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map,
+		reflect.Pointer, reflect.Slice:
+
+		if v.IsNil() {
+			return true
+		}
+	}
+	if v.CanInterface() {
+		if zer, ok := v.Interface().(zeroer); ok {
+			return zer.IsZero()
+		}
+		if vlr, ok := v.Interface().(driver.Valuer); ok {
+			if val, err := vlr.Value(); err == nil {
+				return isEmpty(reflect.ValueOf(val))
+			}
+		}
+	}
+	switch v.Kind() { //nolint:exhaustive
+	case reflect.Bool:
+		return false
+
+	case reflect.String, reflect.Array, reflect.Map, reflect.Slice,
+		reflect.Chan:
+
+		return v.Len() == 0
+
+	case reflect.Interface, reflect.Pointer:
+		return isEmpty(v.Elem())
+
+	default:
+		return v.IsZero()
+	}
 }
 
 // indirect returns the type that typ points to.

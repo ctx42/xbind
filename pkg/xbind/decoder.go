@@ -69,8 +69,11 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // [xrr.FieldErrors] keyed by the src keys; the other values are still set.
 // Decoded slice elements are appended to the elements dst already has; array
 // elements past the decoded values keep their values. A nil pointer to a
-// nested struct is allocated only when a src key leads into it; the required
-// fields of a nil struct pointer, an absent struct, are not checked. A src
+// nested struct is allocated only when a src key leads into it. A field with
+// the "required" option is an [ErrRequired] error when it is empty after
+// decoding: a zero number, an empty string, slice or map, a nil pointer, or a
+// zero struct; a bool is never empty. The required fields of a nil struct
+// pointer, an absent struct, are not checked. A src
 // key leading into an embedded nil pointer to a struct, which the decoder
 // cannot allocate because the field is unexported, is an [ErrUnexported]
 // field error. Pointers to pointers to structs are not supported.
@@ -91,7 +94,7 @@ func (dec *Decoder) tagName() string {
 }
 
 // decode decodes src to the dst struct and returns the errors of the src
-// values and of the required fields src does not set.
+// values and of the required fields left empty.
 func (dec *Decoder) decode(
 	dst *mirror.StructValue,
 	src url.Values,
@@ -106,7 +109,6 @@ func (dec *Decoder) decode(
 	}
 
 	// Go over src keys and match them with struct fields.
-	set := make(map[string]bool) // Paths of the fields src sets.
 	for pth, vls := range src {
 		res := dec.resolve("", strings.Split(pth, "."), dst, nil)
 		if res.ignored {
@@ -127,18 +129,14 @@ func (dec *Decoder) decode(
 		if err := setField(dstV, dec.reg, key, vls...); err != nil {
 			setErr(pth, err)
 		}
-		// A key setting a field also sets the structs on its path.
-		for p := res.pth; ; {
-			set[p] = true
-			i := strings.LastIndexByte(p, '.')
-			if i < 0 {
-				break
-			}
-			p = p[:i]
-		}
 	}
 
-	dec.required("", dst, set, map[ptrKey]bool{}, setErr)
+	// A field with a value error keeps that error.
+	dec.required("", dst, map[ptrKey]bool{}, func(pth string, err error) {
+		if ers == nil || ers.Get(pth) == nil {
+			setErr(pth, err)
+		}
+	})
 	return ers
 }
 
@@ -222,16 +220,14 @@ func (dec *Decoder) resolve(
 }
 
 // required sets an [ErrRequired] error, using setErr, for each required field
-// of dst whose path is not in set; a struct field is set when a field in it
-// is. A nil struct pointer is an absent struct, so its fields are not
-// checked. Ignored fields and unexported fields, other than embedded structs,
-// are skipped; an embedded struct has no path, so its required option is
-// ignored. The seen map holds the struct pointers on the path to dst, so a
-// pointer cycle ends.
+// of dst whose value is empty (see isEmpty). A nil struct pointer is an
+// absent struct, so its fields are not checked. Ignored fields and unexported
+// fields, other than embedded structs, are skipped; an embedded struct has no
+// path, so its required option is ignored. The seen map holds the struct
+// pointers on the path to dst, so a pointer cycle ends.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
-	set map[string]bool,
 	seen map[ptrKey]bool,
 	setErr func(string, error),
 ) {
@@ -264,12 +260,12 @@ func (dec *Decoder) required(
 			// not include the name of the embedded struct.
 			if anon {
 				fldPath = prefix
-			} else if tag.Contains("required") && !set[fldPath] {
+			} else if tag.Contains("required") && isEmpty(fld.Value()) {
 				setErr(fldPath, ErrRequired)
 			}
 			val := fld.Value()
 			if val.Kind() != reflect.Pointer {
-				dec.required(fldPath, fld.StructValue(), set, seen, setErr)
+				dec.required(fldPath, fld.StructValue(), seen, setErr)
 				continue
 			}
 			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
@@ -277,11 +273,11 @@ func (dec *Decoder) required(
 				continue // An absent struct, or a pointer cycle.
 			}
 			seen[key] = true
-			dec.required(fldPath, fld.StructValue(), set, seen, setErr)
+			dec.required(fldPath, fld.StructValue(), seen, setErr)
 			delete(seen, key)
 			continue
 		}
-		if tag.Contains("required") && !set[fldPath] {
+		if tag.Contains("required") && isEmpty(fld.Value()) {
 			setErr(fldPath, ErrRequired)
 		}
 	}

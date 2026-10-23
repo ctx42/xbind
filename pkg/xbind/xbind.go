@@ -8,7 +8,7 @@
 // "url" struct tag for the field name and options:
 //
 //	type Query struct {
-//		Name  string            `url:"name,required"`  // Must be present.
+//		Name  string            `url:"name,required"`  // Must not be empty.
 //		Tags  []string          `url:"tag"`            // Repeated key.
 //		Attrs map[string]string `url:"attr"`           // Keys attr.<key>.
 //		Page  *Page             `url:"page"`           // Keys page.<field>.
@@ -69,8 +69,8 @@ const (
 	// ECEncNotFound represents the missing type encoder error code.
 	ECEncNotFound = "ECEncNotFound"
 
-	// ECRequired represents the error code for a required field that was not
-	// set. Only [Decoder] sets it.
+	// ECRequired represents the error code for a required field that is
+	// empty after decoding. Only [Decoder] sets it.
 	ECRequired = "ECRequired"
 
 	// ECInvTimeFormat represents the error code for field values with an
@@ -119,7 +119,7 @@ var (
 	// format when binding.
 	ErrDurFormat = xrr.New("invalid duration string", ECInvDurFormat)
 
-	// ErrRequired represents an error for missing required fields.
+	// ErrRequired represents an error for required fields left empty.
 	ErrRequired = xrr.New("cannot be blank", ECRequired)
 
 	// ErrInvValue represents an error for an invalid field value.

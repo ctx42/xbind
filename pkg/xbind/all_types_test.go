@@ -4,6 +4,7 @@
 package xbind
 
 import (
+	"database/sql/driver"
 	"encoding"
 	"errors"
 	"fmt"
@@ -379,6 +380,17 @@ func (tlv *TLevel) UnmarshalText(text []byte) error {
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.
 type TCycle struct{ *TCycle }
+
+// TValuer implements [driver.Valuer] returning its value, or an error when
+// the value is "error".
+type TValuer string
+
+func (tvl TValuer) Value() (driver.Value, error) {
+	if tvl == "error" {
+		return nil, errTest
+	}
+	return string(tvl), nil
+}
 
 // TNode is a recursive struct: a linked list node.
 type TNode struct {

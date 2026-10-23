@@ -218,6 +218,61 @@ func Test_hasNilEmbedded_tabular(t *testing.T) {
 	}
 }
 
+func Test_isEmpty_tabular(t *testing.T) {
+	var nilPtr *int
+	itf := reflect.ValueOf(&struct{ I any }{I: ""}).Elem().Field(0)
+	itfFull := reflect.ValueOf(&struct{ I any }{I: "a"}).Elem().Field(0)
+	unexp := reflect.ValueOf(struct{ t time.Time }{}).Field(0)
+
+	tt := []struct {
+		testN string
+
+		val  reflect.Value
+		want bool
+	}{
+		{"invalid", reflect.Value{}, true},
+		{"nil pointer", reflect.ValueOf(nilPtr), true},
+		{"nil map", reflect.ValueOf(map[string]int(nil)), true},
+		{"nil slice", reflect.ValueOf([]int(nil)), true},
+		{"nil func", reflect.ValueOf((func())(nil)), true},
+		{"func", reflect.ValueOf(func() {}), false},
+		{"nil chan", reflect.ValueOf((chan int)(nil)), true},
+		{"empty chan", reflect.ValueOf(make(chan int, 1)), true},
+		{"zero IsZero", reflect.ValueOf(time.Time{}), true},
+		{"IsZero", reflect.ValueOf(time.Unix(1, 0)), false},
+		{"empty Valuer", reflect.ValueOf(TValuer("")), true},
+		{"Valuer", reflect.ValueOf(TValuer("a")), false},
+		{"Valuer error", reflect.ValueOf(TValuer("error")), false},
+		{"unexported zero struct", unexp, true},
+		{"false", reflect.ValueOf(false), false},
+		{"empty string", reflect.ValueOf(""), true},
+		{"string", reflect.ValueOf("a"), false},
+		{"empty array", reflect.ValueOf([0]int{}), true},
+		{"array", reflect.ValueOf([1]int{}), false},
+		{"empty map", reflect.ValueOf(map[string]int{}), true},
+		{"empty slice", reflect.ValueOf([]int{}), true},
+		{"pointer to empty", reflect.ValueOf(new("")), true},
+		{"pointer", reflect.ValueOf(new("a")), false},
+		{"interface to empty", itf, true},
+		{"interface", itfFull, false},
+		{"zero int", reflect.ValueOf(0), true},
+		{"int", reflect.ValueOf(1), false},
+		{"zero float", reflect.ValueOf(0.0), true},
+		{"zero struct", reflect.ValueOf(TRequired{}), true},
+		{"struct", reflect.ValueOf(TRequired{FInt: 1}), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isEmpty(tc.val)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_indirect_tabular(t *testing.T) {
 	tt := []struct {
 		testN string

@@ -1136,6 +1136,55 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, "a", dst.P.FStr)
 	})
 
+	t.Run("error - required empty values", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			S string   `url:"s,required"`
+			N int      `url:"n,required"`
+			L []string `url:"l,required"`
+		}{}
+		src := url.Values{"s": {""}, "n": {"0"}, "l": {}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"l: cannot be blank (ECRequired); " +
+			"n: cannot be blank (ECRequired); " +
+			"s: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("required non-empty values", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			B bool   `url:"b,required"`
+			S string `url:"s,required"`
+		}{S: "set"}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, url.Values{})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "set", dst.S)
+	})
+
+	t.Run("error - value error kept over required", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			N int `url:"n,required"`
+		}{}
+		src := url.Values{"n": {"abc"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldIs(t, "n", ErrInvValue, err)
+	})
+
 	t.Run("error - required without tag name", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -1207,9 +1256,9 @@ func Test_Decoder_Decode(t *testing.T) {
 			"val":           {"1"},
 			"req":           {"r"},
 			"next.val":      {"2"},
-			"next.req":      {""},
+			"next.req":      {"r2"},
 			"next.next.val": {"3"},
-			"next.next.req": {""},
+			"next.next.req": {"r3"},
 		}
 
 		// --- When ---
@@ -1784,21 +1833,20 @@ func Test_Decoder_required_tabular(t *testing.T) {
 		testN string
 
 		dst  any
-		set  map[string]bool
 		want []string
 	}{
-		{"not set", &TRequired{}, nil, []string{"f_str"}},
-		{"set", &TRequired{}, map[string]bool{"f_str": true}, nil},
-		{"leaf struct", &TComplex{}, nil, []string{"f_itf"}},
-		{"mixed struct", &TMixed{}, nil, []string{"f_str"}},
-		{"not exported embedded", &TNotExpEmb{}, nil, []string{"f_str"}},
-		{"embedded struct", &struct{ TRequired }{}, nil, []string{"f_str"}},
+		{"empty", &TRequired{}, []string{"f_str"}},
+		{"not empty", &TRequired{FStr: "a"}, nil},
+		{"leaf struct", &TComplex{}, []string{"f_itf"}},
+		{"leaf struct not empty", &TComplex{FItf: TItf{Str: "a"}}, nil},
+		{"mixed struct", &TMixed{}, []string{"f_str"}},
+		{"not exported embedded", &TNotExpEmb{}, []string{"f_str"}},
+		{"embedded struct", &struct{ TRequired }{}, []string{"f_str"}},
 		{
 			"nested struct value",
 			&struct {
 				V TRequired `url:"v"`
 			}{},
-			nil,
 			[]string{"v.f_str"},
 		},
 		{
@@ -1807,14 +1855,12 @@ func Test_Decoder_required_tabular(t *testing.T) {
 				P *TRequired `url:"p"`
 			}{},
 			nil,
-			nil,
 		},
 		{
 			"nested struct pointer",
 			&struct {
 				P *TRequired `url:"p"`
 			}{P: &TRequired{}},
-			nil,
 			[]string{"p.f_str"},
 		},
 		{
@@ -1824,31 +1870,34 @@ func Test_Decoder_required_tabular(t *testing.T) {
 				b string `url:"b,required"`
 			}{},
 			nil,
-			nil,
 		},
-		{"pointer cycle", cyc, nil, []string{"next.req", "req"}},
+		{"pointer cycle", cyc, []string{"next.req", "req"}},
 		{
-			"required nested struct pointer not set",
+			"required nil nested struct pointer",
 			&struct {
 				P *TRequired `url:"p,required"`
 			}{},
-			nil,
 			[]string{"p"},
 		},
 		{
-			"required nested struct pointer set",
+			"required zero nested struct pointer",
 			&struct {
 				P *TRequired `url:"p,required"`
 			}{P: &TRequired{}},
-			map[string]bool{"p": true, "p.f_str": true},
+			[]string{"p", "p.f_str"},
+		},
+		{
+			"required nested struct pointer",
+			&struct {
+				P *TRequired `url:"p,required"`
+			}{P: &TRequired{FStr: "a"}},
 			nil,
 		},
 		{
 			"required embedded struct",
 			&struct {
 				TRequired `url:",required"`
-			}{},
-			map[string]bool{"f_str": true},
+			}{TRequired{FStr: "a"}},
 			nil,
 		},
 	}
@@ -1863,7 +1912,6 @@ func Test_Decoder_required_tabular(t *testing.T) {
 			NewDecoder().required(
 				"",
 				mirror.NewStructValue(tc.dst),
-				tc.set,
 				map[ptrKey]bool{},
 				setErr,
 			)
