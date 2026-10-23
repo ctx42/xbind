@@ -752,18 +752,16 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	return true, unm.UnmarshalText([]byte(val))
 }
 
-// setDst sets dst with the given values. It checks first if dst implements
-// the [encoding.TextUnmarshaler] interface, then it uses decFor with the reg
-// registry, then it decodes a slice or an array element by element. If one
-// of them was used, it returns true and the error returned by it. If none can
+// setDst sets dst with the given values. It checks first if dst implements the
+// [encoding.TextUnmarshaler] interface, then it uses decFor with the reg
+// registry, then it decodes a slice or an array element by element. If one of
+// them was used, it returns true and the error returned by it. If none can
 // decode the value, it returns false with a nil error. Nil pointers are
-// allocated before dst is set.
+// allocated, as deref does, before dst is set.
 func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
-	for dst.Kind() == reflect.Pointer {
-		if dst.IsNil() {
-			dst.Set(reflect.New(dst.Type().Elem()))
-		}
-		dst = dst.Elem()
+	dst, err := deref(dst)
+	if err != nil {
+		return true, err
 	}
 	if reg[dst.Type()] == nil {
 		if ok, err := useUnmarshal(dst, vls...); ok {
