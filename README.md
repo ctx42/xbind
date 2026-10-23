@@ -1,3 +1,6 @@
+[![Go](https://github.com/ctx42/xbind/actions/workflows/go.yml/badge.svg)](https://github.com/ctx42/xbind/actions/workflows/go.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ctx42/xbind.svg)](https://pkg.go.dev/github.com/ctx42/xbind)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/ctx42/xbind)](go.mod)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.md)
 
 # xbind
