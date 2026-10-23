@@ -6,6 +6,7 @@ package xbind
 import (
 	"encoding"
 	"errors"
+	"fmt"
 	"net/url"
 	"reflect"
 	"slices"
@@ -423,8 +424,9 @@ func (enc *Encoder) encodeSlice(
 // map key ("attr[k]"). The keys are encoded with [encoding.TextMarshaler] or
 // the base type encoders; an empty key, one with a bracket, one that is or
 // holds a NaN, and two keys encoded to one text are errors. The entries are
-// encoded in the order of their key texts. The est is passed to the encode
-// method.
+// encoded in the order of their key texts, and of the keys failing to encode,
+// the error of the first one in Go syntax order is returned. The est is passed
+// to the encode method.
 func (enc *Encoder) encodeMap(
 	dst url.Values,
 	prefix string,
@@ -438,6 +440,8 @@ func (enc *Encoder) encodeMap(
 		val reflect.Value // Map value.
 	}
 	var prs []pair
+	var kerr error    // Error of the failing key first in Go syntax order.
+	var kerrGo string // The Go syntax of that key.
 	lvl := enc.elemLevel(src.Type(), est)
 	for it := src.MapRange(); it.Next(); {
 		mk := it.Key()
@@ -460,9 +464,16 @@ func (enc *Encoder) encodeMap(
 			continue // A key counting as nil adds nothing.
 		}
 		if err != nil {
-			return fieldError(prefix, err)
+			txt := fmt.Sprintf("%#v", mk.Interface())
+			if kerr == nil || txt < kerrGo {
+				kerr, kerrGo = err, txt
+			}
+			continue
 		}
 		prs = append(prs, pair{key: key, mk: mk, val: it.Value()})
+	}
+	if kerr != nil {
+		return fieldError(prefix, kerr)
 	}
 	// In key order, the output and the first error are the same every time.
 	slices.SortFunc(prs, func(a, b pair) int {

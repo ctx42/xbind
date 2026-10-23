@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2372,6 +2373,28 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		want := "M: invalid value: empty map key (ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Empty(t, dst)
+	})
+
+	t.Run("error - first key error in key order", func(t *testing.T) {
+		// --- Given ---
+		reg := encReg{
+			reflect.TypeFor[TLevel](): func(v reflect.Value) (string, error) {
+				return "", fmt.Errorf("bad %d", v.Int())
+			},
+		}
+		enc := &Encoder{reg: reg}
+		m := map[TLevel]int{1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8}
+		src := reflect.ValueOf(m)
+
+		// --- When ---
+		var have []string
+		for range 20 {
+			err := enc.encodeMap(url.Values{}, "M", src, newEncState())
+			have = append(have, err.Error())
+		}
+
+		// --- Then ---
+		assert.Equal(t, slices.Repeat([]string{"M: bad 1"}, 20), have)
 	})
 
 	t.Run("key pointing to nil pointer", func(t *testing.T) {
