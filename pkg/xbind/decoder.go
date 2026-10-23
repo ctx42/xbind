@@ -564,7 +564,7 @@ func (dec *Decoder) apply(
 			dst.SetLen(stp.pos + 1)
 		}
 		elem := dst.Index(stp.pos)
-		err := dec.apply(elem, steps[1:], vls, stt, pth+stp.name)
+		err = dec.apply(elem, steps[1:], vls, stt, pth+stp.name)
 		if err != nil && prev.IsValid() {
 			for i := size; i < dst.Len(); i++ {
 				dst.Index(i).SetZero()
