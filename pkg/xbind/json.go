@@ -38,7 +38,9 @@ func UnmarshalJSONReader(r io.Reader, dst any) error {
 		return nil
 	}
 	_, syn := errors.AsType[*json.SyntaxError](err)
-	if err != nil && !syn && !errors.Is(err, io.ErrUnexpectedEOF) {
+	// A number too large for a float64 is a type error.
+	_, ute := errors.AsType[*json.UnmarshalTypeError](err)
+	if err != nil && !syn && !ute && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return HUE(err) // Reading after the value failed.
 	}
 	err = xrr.New("trailing data after JSON value", xrr.ECInvJSON)

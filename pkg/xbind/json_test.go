@@ -357,6 +357,7 @@ func Test_UnmarshalJSONr_tabular(t *testing.T) {
 		{"error - garbage", `{"f_data": 1} x`},
 		{"error - incomplete string", `{"f_data": 1} "x`},
 		{"error - incomplete literal", `{"f_data": 1} tru`},
+		{"error - number out of range", `{"f_data": 1} 1e999`},
 	}
 
 	for _, tc := range tt {
