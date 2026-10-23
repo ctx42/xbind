@@ -27,7 +27,7 @@ errors into the same error style.
 - Structured errors built on [ctx42/xrr](https://github.com/ctx42/xrr): the
   package's errors carry codes, and value errors are field errors keyed by the
   source key.
-- Strict JSON body decoding: `UnmarshalJSON`, `UnmarshalJSONr`,
+- Strict JSON body decoding: `UnmarshalJSON`, `UnmarshalJSONReader`,
   `UnmarshalJSONBody`.
 
 ## Install
@@ -185,7 +185,7 @@ type Marshaler interface {
 ### JSON bodies
 
 `UnmarshalJSONBody` decodes a request body and closes it; `UnmarshalJSON` and
-`UnmarshalJSONr` decode a byte slice and a reader. Unknown fields and data
+`UnmarshalJSONReader` decode a byte slice and a reader. Unknown fields and data
 after the JSON value are errors, and decoding errors are translated by `HUE`
 into errors under the `ErrBind` or `xrr.ErrInvJSON` lead error:
 

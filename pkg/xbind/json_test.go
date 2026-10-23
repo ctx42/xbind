@@ -286,7 +286,7 @@ func Test_UnmarshalJSON(t *testing.T) {
 	})
 }
 
-func Test_UnmarshalJSONr(t *testing.T) {
+func Test_UnmarshalJSONReader(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -294,7 +294,7 @@ func Test_UnmarshalJSONr(t *testing.T) {
 		}{}
 
 		// --- When ---
-		err := UnmarshalJSONr(strings.NewReader(`{"f_data": 1}`), dst)
+		err := UnmarshalJSONReader(strings.NewReader(`{"f_data": 1}`), dst)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -308,7 +308,7 @@ func Test_UnmarshalJSONr(t *testing.T) {
 		}{}
 
 		// --- When ---
-		err := UnmarshalJSONr(nil, dst)
+		err := UnmarshalJSONReader(nil, dst)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrBind, err)
@@ -327,7 +327,7 @@ func Test_UnmarshalJSONr(t *testing.T) {
 		}{}
 
 		// --- When ---
-		err := UnmarshalJSONr(r, dst)
+		err := UnmarshalJSONReader(r, dst)
 
 		// --- Then ---
 		assert.ErrorIs(t, errTest, err)
@@ -354,7 +354,7 @@ func Test_UnmarshalJSONr_tabular(t *testing.T) {
 			}{}
 
 			// --- When ---
-			err := UnmarshalJSONr(strings.NewReader(tc.data), dst)
+			err := UnmarshalJSONReader(strings.NewReader(tc.data), dst)
 
 			// --- Then ---
 			var e xrr.Envelope
@@ -365,7 +365,7 @@ func Test_UnmarshalJSONr_tabular(t *testing.T) {
 	}
 }
 
-func Fuzz_UnmarshalJSONr(f *testing.F) {
+func Fuzz_UnmarshalJSONReader(f *testing.F) {
 	f.Add([]byte(`{"f_data": 1, "s": "x", "a": [1, 2], "m": {"k": 1.5}}`))
 	f.Add([]byte(`{"t": "2022-03-15T11:43:01+02:00"}`))
 	f.Add([]byte(`{"f_data": "1"}`))
@@ -400,7 +400,7 @@ func Fuzz_UnmarshalJSONr(f *testing.F) {
 		have := &body{}
 
 		// --- When ---
-		err := UnmarshalJSONr(bytes.NewReader(data), have)
+		err := UnmarshalJSONReader(bytes.NewReader(data), have)
 
 		// --- Then ---
 		if wErr != nil {

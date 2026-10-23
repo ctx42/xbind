@@ -16,15 +16,15 @@ import (
 	"github.com/ctx42/xrr/pkg/xrr"
 )
 
-// UnmarshalJSON unmarshals JSON data to dst; see [UnmarshalJSONr].
+// UnmarshalJSON unmarshals JSON data to dst; see [UnmarshalJSONReader].
 func UnmarshalJSON(data []byte, dst any) error {
-	return UnmarshalJSONr(bytes.NewReader(data), dst)
+	return UnmarshalJSONReader(bytes.NewReader(data), dst)
 }
 
-// UnmarshalJSONr unmarshals the single JSON value read from r to dst. Unknown
-// object fields and data after the value are errors. Errors are translated
-// with [HUE]; a nil r returns [ErrBind].
-func UnmarshalJSONr(r io.Reader, dst any) error {
+// UnmarshalJSONReader unmarshals the single JSON value read from r to dst.
+// Unknown object fields and data after the value are errors. Errors are
+// translated with [HUE]; a nil r returns [ErrBind].
+func UnmarshalJSONReader(r io.Reader, dst any) error {
 	if r == nil {
 		return ErrBind
 	}
@@ -46,14 +46,14 @@ func UnmarshalJSONr(r io.Reader, dst any) error {
 }
 
 // UnmarshalJSONBody unmarshals the JSON request body to dst, see
-// [UnmarshalJSONr], and closes the body. A nil request or body returns
+// [UnmarshalJSONReader], and closes the body. A nil request or body returns
 // [ErrBind].
 func UnmarshalJSONBody(req *http.Request, dst any) error {
 	if req == nil || req.Body == nil {
 		return ErrBind
 	}
 	defer func() { _ = req.Body.Close() }()
-	return UnmarshalJSONr(req.Body, dst)
+	return UnmarshalJSONReader(req.Body, dst)
 }
 
 // HUE handles low-level JSON unmarshal errors. It returns the error

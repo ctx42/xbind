@@ -24,8 +24,8 @@
 // variants, [time.Time] (RFC 3339), [time.Duration], and types implementing
 // [encoding.TextUnmarshaler] / [encoding.TextMarshaler] or [Marshaler].
 //
-// [UnmarshalJSON], [UnmarshalJSONr] and [UnmarshalJSONBody] decode JSON bodies
-// strictly (unknown fields and trailing data are errors) and translate
+// [UnmarshalJSON], [UnmarshalJSONReader] and [UnmarshalJSONBody] decode JSON
+// bodies strictly (unknown fields and trailing data are errors) and translate
 // [encoding/json] errors with [HUE].
 //
 // Errors are [xrr] errors with codes; errors returned by marshalers and
