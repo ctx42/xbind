@@ -96,7 +96,8 @@ func decBool(vls ...string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch strings.ToLower(val) {
+	low := strings.ToLower(val)
+	switch low {
 	case "on":
 		return true, nil
 
@@ -104,7 +105,7 @@ func decBool(vls ...string) (any, error) {
 		return false, nil
 
 	default:
-		v, err := strconv.ParseBool(strings.ToLower(val))
+		v, err := strconv.ParseBool(low)
 		if err != nil {
 			return nil, convertErr(val, "bool")
 		}
