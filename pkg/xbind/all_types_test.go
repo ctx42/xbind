@@ -140,7 +140,7 @@ type TTextPtr byte
 func (ttp *TTextPtr) MarshalText() (text []byte, err error) {
 	v := byte(*ttp)
 	if v < 32 || v > 126 {
-		return nil, fmt.Errorf("non-printable ascii character")
+		return nil, errors.New("non-printable ascii character")
 	}
 	vs := string(v)
 	return []byte(vs), nil
@@ -171,7 +171,7 @@ type TTextVal byte
 func (ttv TTextVal) MarshalText() (text []byte, err error) {
 	v := byte(ttv)
 	if v < 32 || v > 126 {
-		return nil, fmt.Errorf("non-printable ascii character")
+		return nil, errors.New("non-printable ascii character")
 	}
 	return []byte(string(v)), nil
 }
