@@ -1625,6 +1625,23 @@ func Test_Decoder_Decode(t *testing.T) {
 		}
 	})
 
+	t.Run("prefilled pointer map key names its entry", func(t *testing.T) {
+		// --- Given ---
+		key := "a"
+		dst := &struct {
+			M map[*string]TItem `url:"m"`
+		}{M: map[*string]TItem{&key: {Size: 1}}}
+		src := url.Values{"m[a].name": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := map[*string]TItem{&key: {Size: 1, Name: "x"}}
+		assert.Equal(t, want, dst.M)
+	})
+
 	t.Run("error - NaN map key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -2033,6 +2050,23 @@ func Test_Decoder_Decode(t *testing.T) {
 		// --- Then ---
 		want := "m[1,2].f_str: cannot be blank (ECRequired)"
 		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - required under a prefilled map key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[TPoint]TRequired `url:"m"`
+		}{M: map[TPoint]TRequired{{1, 2}: {}, {3, 4}: {FStr: "x"}}}
+		src := url.Values{"m[01,2].f_int": {"5"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecFunc(decPoint)).Decode(dst, src)
+
+		// --- Then ---
+		want := "m[01,2].f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 2, dst.M)
+		assert.Equal(t, TRequired{FInt: 5}, dst.M[TPoint{1, 2}])
 	})
 
 	t.Run("error - required under registered time key", func(t *testing.T) {
@@ -2899,6 +2933,8 @@ func Test_newState(t *testing.T) {
 	assert.Nil(t, have.log)
 	assert.NotNil(t, have.entries)
 	assert.Len(t, 0, have.entries)
+	assert.NotNil(t, have.maps)
+	assert.Len(t, 0, have.maps)
 	assert.NotNil(t, have.failed)
 	assert.Len(t, 0, have.failed)
 	assert.NotNil(t, have.set)
@@ -2929,11 +2965,12 @@ func Test_state_entry(t *testing.T) {
 	t.Run("equal keys name one entry", func(t *testing.T) {
 		// --- Given ---
 		stt := newState()
+		m := reflect.ValueOf(map[*int]int(nil))
 		one := reflect.ValueOf(new(1))
-		ent := stt.entry("m", one, "01", false)
+		ent := stt.entry("m", m, one, "01", false)
 
 		// --- When ---
-		have := stt.entry("m", reflect.ValueOf(new(1)), "1", false)
+		have := stt.entry("m", m, reflect.ValueOf(new(1)), "1", false)
 
 		// --- Then ---
 		assert.Equal(t, "1", ent.text)
@@ -2941,13 +2978,42 @@ func Test_state_entry(t *testing.T) {
 		assert.Same(t, one.Interface(), have.key.Interface())
 	})
 
+	t.Run("key already in the map", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		one := new(1)
+		m := reflect.ValueOf(map[*int]int{one: 1})
+
+		// --- When ---
+		have := stt.entry("m", m, reflect.ValueOf(new(1)), "01", false)
+
+		// --- Then ---
+		assert.Same(t, one, have.key.Interface())
+		assert.Equal(t, "1", have.text)
+		assert.True(t, have.named)
+	})
+
+	t.Run("key already in the map takes the src text", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		m := reflect.ValueOf(map[TPoint]int{{1, 2}: 1})
+
+		// --- When ---
+		have := stt.entry("m", m, reflect.ValueOf(TPoint{1, 2}), "1,2", true)
+
+		// --- Then ---
+		assert.Equal(t, "1,2", have.text)
+		assert.Equal(t, TPoint{1, 2}, have.key.Interface())
+	})
+
 	t.Run("key without an encoder takes the src text", func(t *testing.T) {
 		// --- Given ---
 		stt := newState()
+		m := reflect.ValueOf(map[TPoint]int(nil))
 		key := reflect.ValueOf(TPoint{1, 2})
 
 		// --- When ---
-		have := stt.entry("m", key, "1,2", false)
+		have := stt.entry("m", m, key, "1,2", false)
 
 		// --- Then ---
 		assert.Equal(t, "1,2", have.text)
@@ -2957,10 +3023,11 @@ func Test_state_entry(t *testing.T) {
 	t.Run("registered key type keeps the src text", func(t *testing.T) {
 		// --- Given ---
 		stt := newState()
+		m := reflect.ValueOf(map[TLevel]int(nil))
 		key := reflect.ValueOf(TLevel(9))
 
 		// --- When ---
-		have := stt.entry("m", key, "9", true)
+		have := stt.entry("m", m, key, "9", true)
 
 		// --- Then ---
 		assert.Equal(t, "9", have.text)
@@ -2970,11 +3037,12 @@ func Test_state_entry(t *testing.T) {
 	t.Run("maps at other paths", func(t *testing.T) {
 		// --- Given ---
 		stt := newState()
+		m := reflect.ValueOf(map[*int]int(nil))
 		one := reflect.ValueOf(new(1))
-		ent := stt.entry("a", one, "1", false)
+		ent := stt.entry("a", m, one, "1", false)
 
 		// --- When ---
-		have := stt.entry("b", reflect.ValueOf(new(1)), "1", false)
+		have := stt.entry("b", m, reflect.ValueOf(new(1)), "1", false)
 
 		// --- Then ---
 		assert.NotSame(t, ent.key.Interface(), have.key.Interface())
@@ -3362,7 +3430,8 @@ func Test_Decoder_requiredIn(t *testing.T) {
 		seen := map[ptrKey]bool{}
 
 		stt := newState()
-		_ = stt.entry("m", reflect.ValueOf(TPoint{1, 2}), "1,2", false)
+		m := reflect.ValueOf(map[TPoint]TRequired(nil))
+		_ = stt.entry("m", m, reflect.ValueOf(TPoint{1, 2}), "1,2", false)
 
 		var have []string
 		setErr := func(pth string, _ error) { have = append(have, pth) }

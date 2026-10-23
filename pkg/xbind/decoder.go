@@ -408,6 +408,7 @@ type state struct {
 	reset   map[string]bool        // Canonical paths of the reset containers.
 	log     []resetLog             // The resets and saves, in the order made.
 	entries map[string]mapEntry    // Map entries reached, by entry identity.
+	maps    map[string]bool        // Canonical paths of the maps reached.
 	failed  map[string]bool        // Canonical paths of the values that failed.
 	set     map[string]bool        // Canonical paths of the values keys set.
 	indexed map[string]bool        // Canonical paths of the indexed containers.
@@ -426,8 +427,9 @@ type resetLog struct {
 
 // mapEntry is a map entry src keys reach.
 type mapEntry struct {
-	key  reflect.Value // The map key, decoded from the first src key.
-	text string        // The key text in the canonical path of the entry.
+	key   reflect.Value // The map key, decoded from the first src key.
+	text  string        // The key text in the canonical path of the entry.
+	named bool          // A src key named the entry.
 }
 
 // newState returns the state of a new [Decoder.Decode] call, with no element
@@ -436,6 +438,7 @@ func newState() *state {
 	return &state{
 		reset:   make(map[string]bool),
 		entries: make(map[string]mapEntry),
+		maps:    make(map[string]bool),
 		failed:  make(map[string]bool),
 		set:     make(map[string]bool),
 		indexed: make(map[string]bool),
@@ -462,19 +465,37 @@ func (stt *state) level(typ reflect.Type, key string) level {
 // pointer keys and keys holding pointers find it again, and its text is the
 // encoded text or, when the key type has no encoder or keep is true, the src
 // text of the first key. Pass keep for a key type with a registered decoder,
-// whose src text may differ from the encoded one.
+// whose src text may differ from the encoded one. The keys already in the map
+// m name their entries too, the first time a key reaches m, so a pointer key
+// there finds its entry and the value is updated in place; the text of such
+// an entry comes from the first src key naming it.
 func (stt *state) entry(
 	pth string,
+	m reflect.Value,
 	key reflect.Value,
 	txt string,
 	keep bool,
 ) mapEntry {
 
+	if !stt.maps[pth] {
+		stt.maps[pth] = true
+		for it := m.MapRange(); it.Next(); {
+			mk := it.Key()
+			id := pth + "[" + keyText(mk, "%#v") + "]"
+			if _, ok := stt.entries[id]; !ok {
+				stt.entries[id] = mapEntry{key: mk, text: keyText(mk, "%v")}
+			}
+		}
+	}
 	id := pth + "[" + keyText(key, "%#v") + "]"
-	if ent, ok := stt.entries[id]; ok {
+	ent, ok := stt.entries[id]
+	if ok && ent.named {
 		return ent
 	}
-	ent := mapEntry{key: key, text: txt}
+	if !ok {
+		ent.key = key
+	}
+	ent.text, ent.named = txt, true
 	if enc, err := encMapKey(key, nil); err == nil && !keep {
 		ent.text = enc
 	}
@@ -594,7 +615,8 @@ func (dec *Decoder) apply(
 			const format = "%w: NaN map key"
 			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
 		}
-		ent := stt.entry(pth, key, stp.key, dec.reg[indirect(kt)] != nil)
+		keep := dec.reg[indirect(kt)] != nil
+		ent := stt.entry(pth, dst, key, stp.key, keep)
 		key = ent.key
 		kpt := pth + "[" + ent.text + "]"
 		val := reflect.New(dst.Type().Elem()).Elem()
