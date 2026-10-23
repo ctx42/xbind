@@ -309,12 +309,14 @@ func (dec *Decoder) plan(typ reflect.Type, segs []segment) ([]step, error) {
 			key := seg.text
 			segs = segs[1:]
 			if !seg.bracket && dec.isLeafValue(typ.Elem()) {
+				txt := []string{key}
 				for _, nxt := range segs {
 					if nxt.bracket {
 						return nil, ErrUnkFieldPath
 					}
-					key += "." + nxt.text
+					txt = append(txt, nxt.text)
 				}
+				key = strings.Join(txt, ".")
 				segs = nil
 			}
 			stp := step{kind: stepKey, key: key, name: "[" + key + "]"}
