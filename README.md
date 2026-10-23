@@ -29,7 +29,6 @@ errors into the same error style.
   source key.
 - Strict JSON body decoding: `UnmarshalJSON`, `UnmarshalJSONr`,
   `UnmarshalJSONBody`.
-- Test helpers in `xbindtest` that panic instead of returning errors.
 
 ## Install
 
