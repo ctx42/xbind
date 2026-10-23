@@ -194,6 +194,7 @@ func (dec *Decoder) decode(
 			if !dec.allowUnknown {
 				setErr(key, ErrUnkFieldPath)
 			}
+
 		default:
 			setErr(key, err)
 		}

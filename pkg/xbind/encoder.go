@@ -369,6 +369,7 @@ func (enc *Encoder) encodeMap(
 		switch {
 		case key == "":
 			format = "%w: empty map key"
+
 		case strings.ContainsAny(key, "[]"):
 			format = "%w: map key with a bracket"
 		}
