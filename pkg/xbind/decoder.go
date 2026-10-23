@@ -38,10 +38,12 @@ func WithDecAllowUnknown() DecoderOption {
 	return func(dec *Decoder) { dec.allowUnknown = true }
 }
 
-// WithDecMaxIndex is a [NewDecoder] option setting the largest slice or
-// array index a src key may use; a larger one is an [ErrInvValue] field
-// error. A zero n allows only index 0, and a negative n rejects every index.
-// The default is [DefaultMaxIndex].
+// WithDecMaxIndex is a [NewDecoder] option setting the largest slice or array
+// index a src key may use; a larger one is an [ErrInvValue] field error. A zero
+// n allows only index 0, and a negative n rejects every index. The limit also
+// bounds the slice elements one src may allocate (see [Decoder.Decode]), so a
+// large n lets a small src allocate a large slice. The default is
+// [DefaultMaxIndex].
 func WithDecMaxIndex(n int) DecoderOption {
 	return func(dec *Decoder) { dec.maxIndex = &n }
 }
