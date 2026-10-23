@@ -158,118 +158,79 @@ func Test_encFor_tabular(t *testing.T) {
 	}
 }
 
-func Test_encBool(t *testing.T) {
-	t.Run("true", func(t *testing.T) {
-		// --- When ---
-		have, err := encBool(reflect.ValueOf(true))
+func Test_encBool_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "true", have)
-	})
+		val  reflect.Value
+		want string
+	}{
+		{"true", reflect.ValueOf(true), "true"},
+		{"false", reflect.ValueOf(false), "false"},
+	}
 
-	t.Run("false", func(t *testing.T) {
-		// --- When ---
-		have, err := encBool(reflect.ValueOf(false))
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have, err := encBool(tc.val)
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "false", have)
-	})
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
-func Test_encInt(t *testing.T) {
-	t.Run("int", func(t *testing.T) {
-		// --- When ---
-		have, err := encInt(reflect.ValueOf(-1))
+func Test_encInt_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "-1", have)
-	})
+		val  reflect.Value
+		want string
+	}{
+		{"int", reflect.ValueOf(-1), "-1"},
+		{"int8", reflect.ValueOf(int8(-1)), "-1"},
+		{"int16", reflect.ValueOf(int16(-1)), "-1"},
+		{"int32", reflect.ValueOf(int32(-1)), "-1"},
+		{"int64", reflect.ValueOf(int64(-1)), "-1"},
+	}
 
-	t.Run("int8", func(t *testing.T) {
-		// --- When ---
-		have, err := encInt(reflect.ValueOf(int8(-1)))
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have, err := encInt(tc.val)
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "-1", have)
-	})
-
-	t.Run("int16", func(t *testing.T) {
-		// --- When ---
-		have, err := encInt(reflect.ValueOf(int16(-1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "-1", have)
-	})
-
-	t.Run("int32", func(t *testing.T) {
-		// --- When ---
-		have, err := encInt(reflect.ValueOf(int32(-1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "-1", have)
-	})
-
-	t.Run("int64", func(t *testing.T) {
-		// --- When ---
-		have, err := encInt(reflect.ValueOf(int64(-1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "-1", have)
-	})
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
-func Test_encUint(t *testing.T) {
-	t.Run("uint", func(t *testing.T) {
-		// --- When ---
-		have, err := encUint(reflect.ValueOf(uint(1)))
+func Test_encUint_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "1", have)
-	})
+		val  reflect.Value
+		want string
+	}{
+		{"uint", reflect.ValueOf(uint(1)), "1"},
+		{"uint8", reflect.ValueOf(uint8(1)), "1"},
+		{"uint16", reflect.ValueOf(uint16(1)), "1"},
+		{"uint32", reflect.ValueOf(uint32(1)), "1"},
+		{"uint64", reflect.ValueOf(uint64(1)), "1"},
+	}
 
-	t.Run("uint8", func(t *testing.T) {
-		// --- When ---
-		have, err := encUint(reflect.ValueOf(uint8(1)))
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have, err := encUint(tc.val)
 
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "1", have)
-	})
-
-	t.Run("uint16", func(t *testing.T) {
-		// --- When ---
-		have, err := encUint(reflect.ValueOf(uint16(1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "1", have)
-	})
-
-	t.Run("uint32", func(t *testing.T) {
-		// --- When ---
-		have, err := encUint(reflect.ValueOf(uint32(1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "1", have)
-	})
-
-	t.Run("uint64", func(t *testing.T) {
-		// --- When ---
-		have, err := encUint(reflect.ValueOf(uint64(1)))
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.Equal(t, "1", have)
-	})
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_encFloat(t *testing.T) {
