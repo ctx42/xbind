@@ -1675,6 +1675,25 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, map[float64]string{0: "a"}, dst.M)
 	})
 
+	t.Run("error - map key not comparable", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(s string) (any, error) {
+			return []byte(s), nil
+		}))
+		dst := &struct {
+			M map[any]int `url:"m"`
+		}{}
+		src := url.Values{"m[x]": {"1"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		want := "m[x]: invalid value: map key not comparable (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.M)
+	})
+
 	t.Run("map keys printing alike", func(t *testing.T) {
 		// --- Given ---
 		type key struct{ A, B string }

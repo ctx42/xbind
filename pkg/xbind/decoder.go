@@ -561,6 +561,11 @@ func (dec *Decoder) apply(
 		if err != nil {
 			return err
 		}
+		if !key.Comparable() {
+			// A decoder may return a value no map can hold as a key.
+			const format = "%w: map key not comparable"
+			return xrr.Newf(format, ErrInvValue, xrr.WithCode(ECInvValue))
+		}
 		if isNaNKey(key) {
 			// No lookup finds a key holding a NaN, so its entry cannot be
 			// read back.
