@@ -192,6 +192,7 @@ func (dec *Decoder) decode(
 		}
 		switch {
 		case err == nil, errors.Is(err, errIgnored):
+
 		case unknown:
 			if !dec.allowUnknown {
 				setErr(key, ErrUnkFieldPath)
