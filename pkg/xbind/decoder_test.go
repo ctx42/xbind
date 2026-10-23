@@ -1226,9 +1226,10 @@ func Test_Decoder_Decode(t *testing.T) {
 			P *TRequired `url:"p,required"`
 			V TRequired  `url:"v,required"`
 		}{}
+		src := url.Values{}
 
 		// --- When ---
-		err := NewDecoder().Decode(dst, url.Values{})
+		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
 		want := "" +
@@ -1280,9 +1281,10 @@ func Test_Decoder_Decode(t *testing.T) {
 			B bool   `url:"b,required"`
 			S string `url:"s,required"`
 		}{S: "set"}
+		src := url.Values{}
 
 		// --- When ---
-		err := NewDecoder().Decode(dst, url.Values{})
+		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1364,8 +1366,11 @@ func Test_Decoder_Decode(t *testing.T) {
 	})
 
 	t.Run("error - malformed struct tag", func(t *testing.T) {
+		// --- Given ---
+		src := url.Values{}
+
 		// --- When ---
-		err := NewDecoder().Decode(badTag(`url:n`, false), url.Values{})
+		err := NewDecoder().Decode(badTag(`url:n`, false), src)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -1374,8 +1379,11 @@ func Test_Decoder_Decode(t *testing.T) {
 	})
 
 	t.Run("error - malformed tag in nil nested struct", func(t *testing.T) {
+		// --- Given ---
+		src := url.Values{}
+
 		// --- When ---
-		err := NewDecoder().Decode(badTag(`url:n`, true), url.Values{})
+		err := NewDecoder().Decode(badTag(`url:n`, true), src)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: F.N", err)
@@ -1923,9 +1931,10 @@ func Test_Decoder_Decode(t *testing.T) {
 		dst := &struct {
 			F string `url:",required"`
 		}{}
+		src := url.Values{}
 
 		// --- When ---
-		err := NewDecoder().Decode(dst, url.Values{})
+		err := NewDecoder().Decode(dst, src)
 
 		// --- Then ---
 		xrrtest.AssertFieldsEqual(t, "F: cannot be blank (ECRequired)", err)
@@ -2638,9 +2647,10 @@ func Test_Decoder_apply(t *testing.T) {
 		// --- Given ---
 		dst := reflect.ValueOf((*TItem)(nil))
 		stp := []step{{kind: stepField, idx: []int{0}, name: "size"}}
+		vls := []string{"1"}
 
 		// --- When ---
-		err := NewDecoder().apply(dst, stp, []string{"1"}, newState(), "")
+		err := NewDecoder().apply(dst, stp, vls, newState(), "")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
@@ -2656,9 +2666,10 @@ func Test_Decoder_apply(t *testing.T) {
 		bad := []step{key, {kind: stepIndex, pos: 1, name: "[1]"}}
 		_ = dec.apply(dst, bad, []string{"abc"}, stt, "") // Fails on abc.
 		stp := []step{key, {kind: stepIndex, pos: 0, name: "[0]"}}
+		vls := []string{"1"}
 
 		// --- When ---
-		err := dec.apply(dst, stp, []string{"1"}, stt, "")
+		err := dec.apply(dst, stp, vls, stt, "")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2675,9 +2686,10 @@ func Test_Decoder_apply(t *testing.T) {
 			{kind: stepIndex, pos: 3, name: "[3]"},
 			{kind: stepField, idx: []int{1}, name: "f_int"},
 		}
+		vls := []string{"x"}
 
 		// --- When ---
-		err := NewDecoder().apply(dst, stp, []string{"x"}, stt, "")
+		err := NewDecoder().apply(dst, stp, vls, stt, "")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
@@ -2859,18 +2871,15 @@ func Test_Decoder_required_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- Given ---
+			sv := mirror.NewStructValue(tc.dst)
+			lvl := newLevel(reflect.TypeOf(tc.dst), "url")
+			seen := map[ptrKey]bool{}
+
 			var have []string
 			setErr := func(pth string, _ error) { have = append(have, pth) }
 
 			// --- When ---
-			NewDecoder().required(
-				"",
-				mirror.NewStructValue(tc.dst),
-				newLevel(reflect.TypeOf(tc.dst), "url"),
-				map[ptrKey]bool{},
-				newState(),
-				setErr,
-			)
+			NewDecoder().required("", sv, lvl, seen, newState(), setErr)
 
 			// --- Then ---
 			slices.Sort(have)
@@ -3023,9 +3032,10 @@ func Test_allocEmbedded(t *testing.T) {
 		// --- Given ---
 		s := &struct{ *TPromZero }{}
 		dst := reflect.ValueOf(s).Elem()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, map[reflect.Type]bool{})
+		err := allocEmbedded(dst, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3036,9 +3046,10 @@ func Test_allocEmbedded(t *testing.T) {
 		// --- Given ---
 		s := &struct{ TPromZero }{}
 		dst := reflect.ValueOf(s).Elem()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, map[reflect.Type]bool{})
+		err := allocEmbedded(dst, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3049,9 +3060,10 @@ func Test_allocEmbedded(t *testing.T) {
 		// --- Given ---
 		s := &TCycle{}
 		dst := reflect.ValueOf(s).Elem()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, map[reflect.Type]bool{})
+		err := allocEmbedded(dst, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3063,9 +3075,10 @@ func Test_allocEmbedded(t *testing.T) {
 		// --- Given ---
 		s := &TUnexpPtr{}
 		dst := reflect.ValueOf(s).Elem()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := allocEmbedded(dst, map[reflect.Type]bool{})
+		err := allocEmbedded(dst, seen)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)

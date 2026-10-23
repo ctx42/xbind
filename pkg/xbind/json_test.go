@@ -445,17 +445,21 @@ func Test_UnmarshalJSONBody(t *testing.T) {
 		// --- Given ---
 		req := httptest.NewRequest(http.MethodPost, "/api", nil)
 		req.Body = nil
+		dst := &data{}
 
 		// --- When ---
-		err := UnmarshalJSONBody(req, &data{})
+		err := UnmarshalJSONBody(req, dst)
 
 		// --- Then ---
 		assert.Same(t, ErrBind, err)
 	})
 
 	t.Run("error - nil request", func(t *testing.T) {
+		// --- Given ---
+		dst := &data{}
+
 		// --- When ---
-		err := UnmarshalJSONBody(nil, &data{})
+		err := UnmarshalJSONBody(nil, dst)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrBind, err)

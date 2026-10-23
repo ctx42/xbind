@@ -67,8 +67,11 @@ func Test_NewEncoder(t *testing.T) {
 
 func Test_Encoder_Encode(t *testing.T) {
 	t.Run("error - nil dst", func(t *testing.T) {
+		// --- Given ---
+		src := &TString{}
+
 		// --- When ---
-		err := NewEncoder().Encode(nil, &TString{})
+		err := NewEncoder().Encode(nil, src)
 
 		// --- Then ---
 		assert.Same(t, ErrNilDst, err)
@@ -650,9 +653,10 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("struct value with pointer receiver marshaler", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
+		s := struct{ F TTextPtr }{F: '*'}
 
 		// --- When ---
-		err := NewEncoder().Encode(dst, struct{ F TTextPtr }{F: '*'})
+		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1301,12 +1305,13 @@ func Test_Encoder_Encode(t *testing.T) {
 
 	t.Run("error - tag name with a bracket", func(t *testing.T) {
 		// --- Given ---
+		dst := url.Values{}
 		src := &struct {
 			F int `url:"a[b]"`
 		}{}
 
 		// --- When ---
-		err := NewEncoder().Encode(url.Values{}, src)
+		err := NewEncoder().Encode(dst, src)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: F: bracket in name", err)
@@ -1377,9 +1382,10 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("registered struct type at the top level", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
+		s := TPoint{1, 2}
 
 		// --- When ---
-		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, TPoint{1, 2})
+		err := NewEncoder(WithEncFunc(encPoint)).Encode(dst, s)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1416,8 +1422,11 @@ func Test_Encoder_Encode(t *testing.T) {
 	})
 
 	t.Run("error - malformed struct tag", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+
 		// --- When ---
-		err := NewEncoder().Encode(url.Values{}, badTag(`url:n`, false))
+		err := NewEncoder().Encode(dst, badTag(`url:n`, false))
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -1538,8 +1547,10 @@ func Test_Encoder_Encode(t *testing.T) {
 		m := map[string]node{}
 		m["a"] = node{M: m}
 
+		s := node{M: m}
+
 		// --- When ---
-		err := NewEncoder().Encode(dst, node{M: m})
+		err := NewEncoder().Encode(dst, s)
 
 		// --- Then ---
 		xrrtest.AssertFieldsEqual(t, "m[a].m: pointer cycle (ECCycle)", err)
@@ -1555,8 +1566,10 @@ func Test_Encoder_Encode(t *testing.T) {
 		s := make([]node, 1)
 		s[0].L = s
 
+		src := node{L: s}
+
 		// --- When ---
-		err := NewEncoder().Encode(dst, node{L: s})
+		err := NewEncoder().Encode(dst, src)
 
 		// --- Then ---
 		xrrtest.AssertFieldsEqual(t, "l[0].l: pointer cycle (ECCycle)", err)
@@ -1964,14 +1977,10 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 			return "enc_" + value.Interface().(ct).a, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeSlice(
-			dst,
-			"F",
-			src,
-			map[ptrKey]bool{},
-		)
+		err := (&Encoder{reg: reg}).encodeSlice(dst, "F", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -1985,9 +1994,10 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 			F []chan int `url:"-"`
 		}{F: []chan int{make(chan int)}}
 		src := reflectkit.GetValue(t, s, "F")
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeSlice(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeSlice(dst, "F", src, seen)
 
 		// --- Then ---
 		want := "F[0]: encoder not found for `chan int` (ECEncNotFound)"
@@ -2009,14 +2019,10 @@ func Test_Encoder_encodeSlice(t *testing.T) {
 			return val, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeSlice(
-			dst,
-			"F",
-			src,
-			map[ptrKey]bool{},
-		)
+		err := (&Encoder{reg: reg}).encodeSlice(dst, "F", src, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "F[1]: msg", err)
@@ -2092,14 +2098,10 @@ func Test_Encoder_encodeSlice_tabular(t *testing.T) {
 			// --- Given ---
 			dst := url.Values{}
 			src := reflectkit.GetValue(t, tc.s, "F")
+			seen := map[ptrKey]bool{}
 
 			// --- When ---
-			err := (&Encoder{}).encodeSlice(
-				dst,
-				tc.prefix,
-				src,
-				map[ptrKey]bool{},
-			)
+			err := (&Encoder{}).encodeSlice(dst, tc.prefix, src, seen)
 
 			// --- Then ---
 			assert.NoError(t, err)
@@ -2114,9 +2116,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		dst := url.Values{}
 		lvl := TLevel(1)
 		src := reflect.ValueOf(map[*TLevel]*int{nil: new(1), &lvl: nil})
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2127,9 +2130,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
 		src := reflect.ValueOf(map[*int]string{new(1): "a", new(1): "b"})
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -2143,9 +2147,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		dst := url.Values{}
 		m := map[string]int{"a[": 1, "": 2, "b": 3, "c]": 4}
 		src := reflect.ValueOf(m)
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		want := "M: invalid value: empty map key (ECInvValue)"
@@ -2158,9 +2163,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		dst := url.Values{}
 		var ip *int
 		src := reflect.ValueOf(map[**int]string{&ip: "x"})
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2172,9 +2178,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		dst := url.Values{}
 		ip := new(5)
 		src := reflect.ValueOf(map[**int]string{&ip: "x"})
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2186,9 +2193,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 		dst := url.Values{}
 		key := encoding.TextMarshaler((*TTextPtr)(nil))
 		src := reflect.ValueOf(map[encoding.TextMarshaler]int{key: 1})
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "M", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "M", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2212,9 +2220,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			return "enc_" + value.Interface().(ct).a, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2239,9 +2248,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			return "enc_" + value.Interface().(ct).a, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2261,9 +2271,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		want := "F: encoder not found for `xbind.ct` (ECEncNotFound)"
@@ -2280,9 +2291,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			map[int]chan int{1: make(chan int)},
 		}
 		src := reflectkit.GetValue(t, s, "F")
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		want := "F[1]: encoder not found for `chan int` (ECEncNotFound)"
@@ -2301,9 +2313,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			},
 		}
 		src := reflectkit.GetValue(t, s, "F")
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		want := "F[a][0]: encoder not found for `chan int` (ECEncNotFound)"
@@ -2332,9 +2345,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			return val, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		xrrtest.AssertEqual(t, "F: msg (ECGeneric)", err)
@@ -2361,9 +2375,10 @@ func Test_Encoder_encodeMap(t *testing.T) {
 			return val, nil
 		}
 		reg := encReg{reflect.TypeOf(ct{}): enc}
+		seen := map[ptrKey]bool{}
 
 		// --- When ---
-		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, map[ptrKey]bool{})
+		err := (&Encoder{reg: reg}).encodeMap(dst, "F", src, seen)
 
 		// --- Then ---
 		xrrtest.AssertEqual(t, "F[2]: msg (ECGeneric)", err)
@@ -2417,14 +2432,10 @@ func Test_Encoder_encodeMap_tabular(t *testing.T) {
 			// --- Given ---
 			dst := url.Values{}
 			src := reflectkit.GetValue(t, tc.s, "F")
+			seen := map[ptrKey]bool{}
 
 			// --- When ---
-			err := (&Encoder{}).encodeMap(
-				dst,
-				tc.prefix,
-				src,
-				map[ptrKey]bool{},
-			)
+			err := (&Encoder{}).encodeMap(dst, tc.prefix, src, seen)
 
 			// --- Then ---
 			assert.NoError(t, err)

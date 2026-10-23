@@ -260,9 +260,10 @@ func Test_hasNilEmbedded(t *testing.T) {
 		// --- Given ---
 		cyc := &TCycle{}
 		cyc.TCycle = cyc
+		seen := map[uintptr]bool{}
 
 		// --- When ---
-		have := hasNilEmbedded(reflect.ValueOf(*cyc), map[uintptr]bool{})
+		have := hasNilEmbedded(reflect.ValueOf(*cyc), seen)
 
 		// --- Then ---
 		assert.False(t, have)
@@ -295,8 +296,11 @@ func Test_hasNilEmbedded_tabular(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			seen := map[uintptr]bool{}
+
 			// --- When ---
-			have := hasNilEmbedded(reflect.ValueOf(tc.val), map[uintptr]bool{})
+			have := hasNilEmbedded(reflect.ValueOf(tc.val), seen)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)

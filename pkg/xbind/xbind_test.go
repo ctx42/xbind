@@ -55,9 +55,10 @@ func Test_checkTags(t *testing.T) {
 	t.Run("error - malformed tag", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeOf(badTag(`url:n`, false))
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -67,9 +68,10 @@ func Test_checkTags(t *testing.T) {
 	t.Run("error - malformed tag of nested struct", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeOf(badTag(`url:n`, true))
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("p", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("p", typ, "url", seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: p.F.N", err)
@@ -78,9 +80,10 @@ func Test_checkTags(t *testing.T) {
 	t.Run("error - malformed tag of other key", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeOf(badTag(`url:"n" json:n`, false))
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -92,9 +95,10 @@ func Test_checkTags(t *testing.T) {
 		typ := reflect.StructOf([]reflect.StructField{
 			{Name: "L", Type: reflect.SliceOf(elm)},
 		})
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: L.N", err)
@@ -106,9 +110,10 @@ func Test_checkTags(t *testing.T) {
 			A string `url:"a[b]"`
 		}
 		typ := reflect.TypeFor[struct{ M map[string][]*item }]()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: M.A: bracket in name", err)
@@ -119,9 +124,10 @@ func Test_checkTags(t *testing.T) {
 		typ := reflect.TypeFor[struct {
 			*TItem `url:"item"`
 		}]()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		want := "invalid struct tag: TItem: name on embedded struct"
@@ -134,9 +140,10 @@ func Test_checkTags(t *testing.T) {
 		typ := reflect.TypeFor[struct {
 			TItem `url:",omitempty"`
 		}]()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -147,9 +154,10 @@ func Test_checkTags(t *testing.T) {
 		typ := reflect.TypeFor[struct {
 			TLevel `url:"level"`
 		}]()
+		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", map[reflect.Type]bool{})
+		err := checkTags("", typ, "url", seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -185,8 +193,11 @@ func Test_checkTags_tabular(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			seen := map[reflect.Type]bool{}
+
 			// --- When ---
-			err := checkTags("", tc.typ, "url", map[reflect.Type]bool{})
+			err := checkTags("", tc.typ, "url", seen)
 
 			// --- Then ---
 			assert.NoError(t, err)
