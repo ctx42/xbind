@@ -40,6 +40,7 @@ var (
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 	_ encoding.TextMarshaler   = TFltKey{}
 	_ encoding.TextMarshaler   = TGenText[int]{}
+	_ zeroer                   = TOwnZero{}
 )
 
 // TString is a test struct with string fields.
@@ -415,6 +416,15 @@ func (tlv *TLevel) UnmarshalText(text []byte) error {
 type TGenText[T any] struct{ V T }
 
 func (tgt TGenText[T]) MarshalText() ([]byte, error) { return nil, nil }
+
+// TOwnZero embeds an interface and declares its own IsZero method, which
+// reports it zero unless Set is true.
+type TOwnZero struct {
+	fmt.Stringer
+	Set bool
+}
+
+func (toz TOwnZero) IsZero() bool { return !toz.Set }
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.
 type TCycle struct{ *TCycle }
