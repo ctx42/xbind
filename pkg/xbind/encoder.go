@@ -111,9 +111,10 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // pointer to a struct, or a map or slice, already being encoded, a cycle, is an
 // [ErrCycle] error keyed by the field path of the repeated value, and a struct
 // tag of src that does not parse, or that names a field with a bracket
-// ("ids[]") or an embedded struct, is an [ErrInvTag] error. On error, dst keeps
-// the values encoded before the error, which may include some values of the
-// failing field.
+// ("ids[]") or an embedded struct, is an [ErrInvTag] error; the tags inside a
+// type encoded as one value, as by its MarshalText method, are not checked. On
+// error, dst keeps the values encoded before the error, which may include some
+// values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
@@ -123,7 +124,8 @@ func (enc *Encoder) Encode(dst url.Values, src any) error {
 		return ErrReqStruct
 	}
 	seen := map[reflect.Type]bool{}
-	if err := checkTags("", val.Type(), enc.tagName(), seen); err != nil {
+	tag := enc.tagName()
+	if err := checkTags("", val.Type(), tag, enc.isLeafType, seen); err != nil {
 		return err
 	}
 	if val.Kind() != reflect.Pointer {
@@ -546,6 +548,14 @@ func (enc *Encoder) isValueType(typ reflect.Type) bool {
 		return true
 	}
 	return encFor(typ, enc.reg) != nil
+}
+
+// isLeafType returns true if a value of the typ type, which is not a pointer,
+// is encoded as a whole: by a registered encoder, by its [Marshaler] or
+// [encoding.TextMarshaler], or by a built-in encoder.
+func (enc *Encoder) isLeafType(typ reflect.Type) bool {
+	return isMarshaler(typ) || isMarshaler(reflect.PointerTo(typ)) ||
+		enc.isValueType(typ)
 }
 
 // errNilKey reports a map key whose MarshalText method would be reached

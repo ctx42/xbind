@@ -40,6 +40,8 @@ var (
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 	_ encoding.TextMarshaler   = TFltKey{}
 	_ encoding.TextMarshaler   = TGenText[int]{}
+	_ encoding.TextUnmarshaler = (*TBadTagText)(nil)
+	_ encoding.TextMarshaler   = TBadTagText{}
 	_ zeroer                   = TOwnZero{}
 	_ zeroer                   = TReadZero{}
 	_ driver.Valuer            = TOwnValuer{}
@@ -447,6 +449,21 @@ func (tov TOwnValuer) Value() (driver.Value, error) { return tov.S, nil }
 type TReadValuer struct{ *TItem }
 
 func (trv TReadValuer) Value() (driver.Value, error) { return trv.Name, nil }
+
+// TBadTagText has a url tag xbind rejects, and is decoded and encoded as one
+// value by its UnmarshalText and MarshalText methods.
+type TBadTagText struct {
+	Hex string `url:"hex[]"`
+}
+
+func (tbt *TBadTagText) UnmarshalText(text []byte) error {
+	tbt.Hex = string(text)
+	return nil
+}
+
+func (tbt TBadTagText) MarshalText() ([]byte, error) {
+	return []byte(tbt.Hex), nil
+}
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.
 type TCycle struct{ *TCycle }

@@ -152,16 +152,18 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // embedded nil pointer to a struct, which the decoder cannot allocate because
 // the field is unexported, is an [ErrUnexported] field error. A struct tag of
 // dst that does not parse, or that names a field with a bracket ("ids[]") or an
-// embedded struct, is an [ErrInvTag] error. A key taking more steps than
-// [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an [ErrInvValue]
-// field error. Pointers to pointers to structs are not supported.
+// embedded struct, is an [ErrInvTag] error; the tags inside a type decoded as
+// one value, as by its UnmarshalText method, are not checked. A key taking more
+// steps than [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an
+// [ErrInvValue] field error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
 		return ErrReqStructPtr
 	}
 	seen := map[reflect.Type]bool{}
-	if err := checkTags("", sv.Type(), dec.tagName(), seen); err != nil {
+	tag := dec.tagName()
+	if err := checkTags("", sv.Type(), tag, dec.isLeafType, seen); err != nil {
 		return err
 	}
 	return dec.decode(sv, reflect.ValueOf(dst).Elem(), src).Filter()

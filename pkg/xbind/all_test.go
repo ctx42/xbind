@@ -30,6 +30,9 @@ func badTag(tag reflect.StructTag, nested bool) any {
 	return reflect.New(typ).Interface()
 }
 
+// noLeaf is a checkTags leaf predicate reporting no type as a leaf.
+func noLeaf(reflect.Type) bool { return false }
+
 // waw represents the Warsaw timezone.
 var waw = must.Value(time.LoadLocation("Europe/Warsaw"))
 

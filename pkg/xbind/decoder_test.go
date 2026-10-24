@@ -1536,6 +1536,21 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertCode(t, ECInvTag, err)
 	})
 
+	t.Run("tags of a type decoded as one value", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			C TBadTagText `url:"c"`
+		}{}
+		src := url.Values{"c": {"ff"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "ff", dst.C.Hex)
+	})
+
 	t.Run("error - malformed tag in nil nested struct", func(t *testing.T) {
 		// --- Given ---
 		src := url.Values{}

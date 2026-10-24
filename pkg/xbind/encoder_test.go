@@ -1668,6 +1668,21 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"a": {"2"}}, dst)
 	})
 
+	t.Run("tags of a type encoded as one value", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			C TBadTagText `url:"c"`
+		}{C: TBadTagText{Hex: "ff"}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"c": {"ff"}}, dst)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -2901,6 +2916,34 @@ func Test_Encoder_isValueType_tabular(t *testing.T) {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
 			have := NewEncoder(WithEncFunc(encPoint)).isValueType(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Encoder_isLeafType_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"registered", reflect.TypeFor[TPoint](), true},
+		{"marshaler", reflect.TypeFor[TMarValVal](), true},
+		{"pointer receiver marshaler", reflect.TypeFor[TMarValPtr](), true},
+		{"text marshaler", reflect.TypeFor[TTextVal](), true},
+		{"time", reflect.TypeFor[time.Time](), true},
+		{"base type", reflect.TypeFor[int](), true},
+		{"struct", reflect.TypeFor[TItem](), false},
+		{"slice", reflect.TypeFor[[]int](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder(WithEncFunc(encPoint)).isLeafType(tc.typ)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)

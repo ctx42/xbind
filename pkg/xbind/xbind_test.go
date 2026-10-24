@@ -58,7 +58,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -71,7 +71,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("p", typ, "url", seen)
+		err := checkTags("p", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: p.F.N", err)
@@ -83,7 +83,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: N", err)
@@ -98,7 +98,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: L.N", err)
@@ -113,7 +113,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid struct tag: M.A: bracket in name", err)
@@ -127,12 +127,46 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		want := "invalid struct tag: TItem: name on embedded struct"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvTag, err)
+	})
+
+	t.Run("fields of a leaf type skipped", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[struct {
+			C TBadTagText   `url:"c"`
+			L []TBadTagText `url:"l"`
+		}]()
+		leaf := func(typ reflect.Type) bool {
+			return typ == reflect.TypeFor[TBadTagText]()
+		}
+		seen := map[reflect.Type]bool{}
+
+		// --- When ---
+		err := checkTags("", typ, "url", leaf, seen)
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
+	t.Run("error - fields of an embedded leaf type", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[struct{ TBadTagText }]()
+		leaf := func(typ reflect.Type) bool {
+			return typ == reflect.TypeFor[TBadTagText]()
+		}
+		seen := map[reflect.Type]bool{}
+
+		// --- When ---
+		err := checkTags("", typ, "url", leaf, seen)
+
+		// --- Then ---
+		want := "invalid struct tag: TBadTagText.Hex: bracket in name"
+		assert.ErrorEqual(t, want, err)
 	})
 
 	t.Run("options on embedded struct", func(t *testing.T) {
@@ -143,7 +177,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -157,7 +191,7 @@ func Test_checkTags(t *testing.T) {
 		seen := map[reflect.Type]bool{}
 
 		// --- When ---
-		err := checkTags("", typ, "url", seen)
+		err := checkTags("", typ, "url", noLeaf, seen)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -197,7 +231,7 @@ func Test_checkTags_tabular(t *testing.T) {
 			seen := map[reflect.Type]bool{}
 
 			// --- When ---
-			err := checkTags("", tc.typ, "url", seen)
+			err := checkTags("", tc.typ, "url", noLeaf, seen)
 
 			// --- Then ---
 			assert.NoError(t, err)
