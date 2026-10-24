@@ -50,9 +50,16 @@ import (
 // defaultTag is the struct tag name read by [Encoder] and [Decoder].
 const defaultTag = "url"
 
-// DefaultMaxIndex is the largest slice or array index a src key may use
-// unless [WithDecMaxIndex] sets another limit.
-const DefaultMaxIndex = 1000
+// Limits of the src keys [Decoder] takes, unless options set others.
+const (
+	// DefaultMaxIndex is the largest slice or array index a src key may use
+	// unless [WithDecMaxIndex] sets another limit.
+	DefaultMaxIndex = 1000
+
+	// DefaultMaxDepth is the largest number of steps a src key may take into
+	// dst unless [WithDecMaxDepth] sets another limit.
+	DefaultMaxDepth = 32
+)
 
 // Marshaler is the interface implemented by types that can marshal themselves
 // into [url.Values]. The [Encoder] does not call it on a nil pointer, a nil

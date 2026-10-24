@@ -112,6 +112,11 @@ plus one, and one more per key. The first key reaching a slice replaces it,
 indexed keys fill it whatever their order, and keys are added to an existing
 map.
 
+A key takes one step per struct field, map key or index, and the rest of a key
+a map of values takes as its key is one step. A key taking more than 32 steps is
+an error unless `WithDecMaxDepth` sets another limit; it bounds the memory a
+deep key into a recursive struct costs.
+
 When a struct and the structs it embeds have fields with the same key, the
 key names the field Go promotion selects, as in `encoding/json`: the
 shallowest one or, among equally shallow ones, the only one whose tag names

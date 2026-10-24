@@ -42,11 +42,11 @@ All source is in `pkg/xbind/`.
   `checkTags` (rejects tags that do not parse, run first by `Decode` and
   `Encode`), and `level`/`newLevel` (which field each key names).
 - **`decoder.go`** — `Decoder`, its options (`WithDecTag`,
-  `WithDecAllowUnknown`, `WithDecMaxIndex`, `WithDecFunc`). `decode` splits
-  every src key into segments (`parseKey`), turns them into steps by type
-  without side effects (`plan`), performs the steps on `dst` (`apply`, which
-  allocates, writes map values back and resets slices once per call), then
-  runs the `required` walk (`required`, `requiredIn`) over `dst`.
+  `WithDecAllowUnknown`, `WithDecMaxIndex`, `WithDecMaxDepth`, `WithDecFunc`).
+  `decode` splits every src key into segments (`parseKey`), turns them into
+  steps by type without side effects (`plan`), performs the steps on `dst`
+  (`apply`, which allocates, writes map values back and resets slices once per
+  call), then runs the `required` walk (`required`, `requiredIn`) over `dst`.
 - **`decoders.go`** — built-in decoders for base kinds, `time.Time` and
   `time.Duration`; `decFor` looks in the registry first.
 - **`encoder.go`** — `Encoder`, its options (`WithEncTag`, `WithEncFunc`).

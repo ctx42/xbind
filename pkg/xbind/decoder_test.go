@@ -58,6 +58,17 @@ func Test_WithDecMaxIndex(t *testing.T) {
 	assert.Equal(t, 5, *dec.maxIndex)
 }
 
+func Test_WithDecMaxDepth(t *testing.T) {
+	// --- Given ---
+	dec := &Decoder{}
+
+	// --- When ---
+	WithDecMaxDepth(5)(dec)
+
+	// --- Then ---
+	assert.Equal(t, 5, *dec.maxDepth)
+}
+
 func Test_WithDecFunc(t *testing.T) {
 	// --- Given ---
 	dec := &Decoder{}
@@ -2277,6 +2288,59 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.B)
 	})
 
+	t.Run("error - key over the depth limit", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			Next *node `url:"next"`
+			V    int   `url:"v"`
+		}
+		dst := &node{}
+		src := url.Values{"next.next.v": {"1"}, "next.next.next.v": {"2"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxDepth(3)).Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"next.next.next.v: invalid value: key depth over the limit 3 " +
+			"(ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, 1, dst.Next.Next.V)
+		assert.Nil(t, dst.Next.Next.Next)
+	})
+
+	t.Run("error - key over the default depth limit", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			Next *node `url:"next"`
+			V    int   `url:"v"`
+		}
+		dst := &node{}
+		deep := strings.Repeat("next.", DefaultMaxDepth) + "v"
+		src := url.Values{deep[len("next."):]: {"1"}, deep: {"2"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "invalid value: key depth over the limit 32"
+		xrrtest.AssertFieldEqual(t, deep, want, err)
+		xrrtest.AssertFieldCnt(t, 1, err)
+	})
+
+	t.Run("rest of a key for a map of values is one step", func(t *testing.T) {
+		// --- Given ---
+		dst := &TBox{}
+		src := url.Values{"attr.a.b.c.d": {"x"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxDepth(2)).Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]string{"a.b.c.d": "x"}, dst.Attr)
+	})
+
 	t.Run("error - index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -2791,6 +2855,24 @@ func Test_Decoder_indexLimit(t *testing.T) {
 	})
 }
 
+func Test_Decoder_depthLimit(t *testing.T) {
+	t.Run("default", func(t *testing.T) {
+		// --- When ---
+		have := (&Decoder{}).depthLimit()
+
+		// --- Then ---
+		assert.Equal(t, DefaultMaxDepth, have)
+	})
+
+	t.Run("set", func(t *testing.T) {
+		// --- When ---
+		have := NewDecoder(WithDecMaxDepth(3)).depthLimit()
+
+		// --- Then ---
+		assert.Equal(t, 3, have)
+	})
+}
+
 func Test_parseKey_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
@@ -2922,6 +3004,21 @@ func Test_Decoder_plan(t *testing.T) {
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
+		assert.Nil(t, have)
+	})
+
+	t.Run("error - over the depth limit", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[TBox]()
+		segs, _ := parseKey("nest[a][1].size")
+
+		// --- When ---
+		have, err := NewDecoder(WithDecMaxDepth(3)).plan(typ, segs, newState())
+
+		// --- Then ---
+		want := "invalid value: key depth over the limit 3"
+		assert.ErrorEqual(t, want, err)
+		assert.ErrorIs(t, ErrInvValue, err)
 		assert.Nil(t, have)
 	})
 

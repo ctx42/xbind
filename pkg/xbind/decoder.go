@@ -48,6 +48,17 @@ func WithDecMaxIndex(n int) DecoderOption {
 	return func(dec *Decoder) { dec.maxIndex = &n }
 }
 
+// WithDecMaxDepth is a [NewDecoder] option setting the largest number of steps
+// a src key may take into dst, one per struct field, map key and slice or array
+// index ("list[0].name" takes three, and the rest of a key a map of values
+// takes as its key is one); a deeper key is an [ErrInvValue] field error. A
+// zero or negative n rejects every key. A key costs memory quadratic in its
+// depth, so a large n lets a small src use a lot of memory when dst has a
+// recursive type. The default is [DefaultMaxDepth].
+func WithDecMaxDepth(n int) DecoderOption {
+	return func(dec *Decoder) { dec.maxDepth = &n }
+}
+
 // WithDecFunc is a [NewDecoder] option decoding every value of type T with
 // fn: fields of type T or *T, and slice, array and map elements and map keys
 // of those types. A value of type T takes a single src value, and an error
@@ -94,6 +105,7 @@ type Decoder struct {
 	tag          string // Struct field tag to use for aliasing.
 	allowUnknown bool   // Allow unknown fields.
 	maxIndex     *int   // Largest index; nil means DefaultMaxIndex.
+	maxDepth     *int   // Largest key depth; nil means DefaultMaxDepth.
 	reg          decReg // Decoders registered with WithDecFunc.
 }
 
@@ -140,8 +152,9 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // embedded nil pointer to a struct, which the decoder cannot allocate because
 // the field is unexported, is an [ErrUnexported] field error. A struct tag of
 // dst that does not parse, or that names a field with a bracket ("ids[]") or an
-// embedded struct, is an [ErrInvTag] error. Pointers to pointers to structs are
-// not supported.
+// embedded struct, is an [ErrInvTag] error. A key taking more steps than
+// [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an [ErrInvValue]
+// field error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -168,6 +181,14 @@ func (dec *Decoder) indexLimit() int {
 		return DefaultMaxIndex
 	}
 	return *dec.maxIndex
+}
+
+// depthLimit returns the largest number of steps a src key may take.
+func (dec *Decoder) depthLimit() int {
+	if dec.maxDepth == nil {
+		return DefaultMaxDepth
+	}
+	return *dec.maxDepth
 }
 
 // decode decodes src to the dst struct, sv and val being two views of it, and
@@ -305,15 +326,16 @@ type step struct {
 // errIgnored reports a src key naming an ignored field; the key is skipped.
 var errIgnored = errors.New("ignored field")
 
-// plan returns the steps a src key, split into segs, takes from a value of
-// type typ. A struct segment names a field, a map segment is the key, and a
-// slice or array segment is an index; a map of plain values given a key that
-// is not bracketed takes the rest of the key as its key. The typ struct
-// itself is always walked field by field, like the encoder does at the empty
-// path, even when it has a promoted UnmarshalText method. A key naming
-// nothing returns [ErrUnkFieldPath], one naming an ignored field returns
-// errIgnored, and an index over the limit or past an array end returns an
-// error wrapping [ErrInvValue]. The levels of the structs come from stt.
+// plan returns the steps a src key, split into segs, takes from a value of type
+// typ. A struct segment names a field, a map segment is the key, and a slice or
+// array segment is an index; a map of plain values given a key that is not
+// bracketed takes the rest of the key as its key. The typ struct itself is
+// always walked field by field, like the encoder does at the empty path, even
+// when it has a promoted UnmarshalText method. A key naming nothing returns
+// [ErrUnkFieldPath], one naming an ignored field returns errIgnored, and an
+// index over the limit or past an array end, or a key taking more steps than
+// the depth limit, returns an error wrapping [ErrInvValue]. The levels of the
+// structs come from stt.
 func (dec *Decoder) plan(
 	typ reflect.Type,
 	segs []segment,
@@ -322,6 +344,11 @@ func (dec *Decoder) plan(
 
 	var steps []step
 	for {
+		if len(steps) > dec.depthLimit() {
+			const format = "%w: key depth over the limit %d"
+			code := xrr.WithCode(ECInvValue)
+			return nil, xrr.Newf(format, ErrInvValue, dec.depthLimit(), code)
+		}
 		typ = indirect(typ)
 		leaf := len(steps) > 0 && dec.isLeafType(typ)
 		if len(segs) == 0 {
