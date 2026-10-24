@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ctx42/xrr/pkg/xrr"
 
@@ -112,9 +113,11 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // [ErrCycle] error keyed by the field path of the repeated value, and a struct
 // tag of src that does not parse, or that names a field with a bracket
 // ("ids[]") or an embedded struct, is an [ErrInvTag] error; the tags inside a
-// type encoded as one value, as by its MarshalText method, are not checked. On
-// error, dst keeps the values encoded before the error, which may include some
-// values of the failing field.
+// type encoded as one value, as by its MarshalText method, are not checked. A
+// [time.Time] whose zone offset has seconds, which RFC 3339 cannot write, is
+// encoded in UTC, so it decodes to the same instant. On error, dst keeps the
+// values encoded before the error, which may include some values of the failing
+// field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
@@ -362,7 +365,7 @@ func encSrc(
 			return true, m.MarshalValues(dst, prefix)
 		}
 		m := src.Interface().(encoding.TextMarshaler) //nolint:forcetypeassert
-		text, err := m.MarshalText()
+		text, err := marshalText(m)
 		if err != nil {
 			return true, err
 		}
@@ -585,7 +588,7 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 			return "", errNilKey
 		}
 		m := key.Interface().(encoding.TextMarshaler) //nolint:forcetypeassert
-		text, err := m.MarshalText()
+		text, err := marshalText(m)
 		return string(text), err
 	}
 	if val := reflect.Indirect(key); val.CanFloat() && val.Float() == 0 {
@@ -595,6 +598,27 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 		return "", encNotFound(typ)
 	}
 	return efn(key)
+}
+
+// marshalText returns the text m marshals to. A [time.Time] whose zone offset
+// has seconds, which RFC 3339 cannot write, is marshaled in UTC, so it decodes
+// back to the same instant.
+func marshalText(m encoding.TextMarshaler) ([]byte, error) {
+	switch tim := m.(type) {
+	case time.Time:
+		if _, off := tim.Zone(); off%60 != 0 {
+			m = tim.UTC()
+		}
+
+	case *time.Time:
+		if tim == nil {
+			break
+		}
+		if _, off := tim.Zone(); off%60 != 0 {
+			m = tim.UTC()
+		}
+	}
+	return m.MarshalText()
 }
 
 // fieldError returns err as a field error for the field path. It returns err

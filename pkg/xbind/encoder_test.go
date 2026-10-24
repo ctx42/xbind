@@ -546,6 +546,42 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, "f_time=2022-03-04T05%3A06%3A07Z", dst.Encode())
 	})
 
+	t.Run("time with an offset in seconds", func(t *testing.T) {
+		// --- Given ---
+		type box struct {
+			T  time.Time         `url:"t"`
+			PT *time.Time        `url:"pt"`
+			TS []time.Time       `url:"ts"`
+			M  map[time.Time]int `url:"m"`
+		}
+		dst := url.Values{}
+		tim := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
+		src := &box{
+			T:  tim,
+			PT: &tim,
+			TS: []time.Time{tim},
+			M:  map[time.Time]int{tim: 1},
+		}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"t":                       {"2019-12-31T23:59:30Z"},
+			"pt":                      {"2019-12-31T23:59:30Z"},
+			"ts":                      {"2019-12-31T23:59:30Z"},
+			"m[2019-12-31T23:59:30Z]": {"1"},
+		}
+		assert.Equal(t, want, dst)
+
+		back := &box{}
+		assert.NoError(t, NewDecoder().Decode(back, dst))
+		assert.True(t, back.T.Equal(tim))
+		assert.True(t, back.PT.Equal(tim))
+	})
+
 	t.Run("struct with Marshaler field", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
@@ -3022,6 +3058,36 @@ func Test_encMapKey(t *testing.T) {
 		assert.ErrorIs(t, ErrEncNotFound, err)
 		assert.Equal(t, "", have)
 	})
+}
+
+func Test_marshalText_tabular(t *testing.T) {
+	sec := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
+	neg := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", -3630))
+	hour := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 3600))
+
+	tt := []struct {
+		testN string
+
+		m    encoding.TextMarshaler
+		want string
+	}{
+		{"offset with seconds", sec, "2019-12-31T23:59:30Z"},
+		{"negative offset with seconds", neg, "2020-01-01T01:00:30Z"},
+		{"pointer to offset with seconds", &sec, "2019-12-31T23:59:30Z"},
+		{"offset in minutes", hour, "2020-01-01T00:00:00+01:00"},
+		{"other type", TTextVal('A'), "A"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have, err := marshalText(tc.m)
+
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, string(have))
+		})
+	}
 }
 
 func Test_fieldError(t *testing.T) {
