@@ -918,9 +918,10 @@ func allocPath(dst reflect.Value, name string, save func(reflect.Value)) error {
 
 				return allocPath(held.Elem(), name, save)
 			}
-			// Nothing can be allocated in a value the interface holds.
+			// Nothing can be allocated in a value the interface holds, and a
+			// nil pointer there is no receiver the method can set.
 			sub, _ := methodPath(held.Type(), name, map[reflect.Type]bool{})
-			if len(sub) > 0 && nilOnPath(held, name) {
+			if isNil(held) || len(sub) > 0 && nilOnPath(held, name) {
 				return decNotFound(dst.Type())
 			}
 			return nil

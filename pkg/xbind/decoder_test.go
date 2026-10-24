@@ -3809,6 +3809,18 @@ func Test_allocPath(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
+	t.Run("error - nil pointer held by an interface", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ encoding.TextUnmarshaler }{(*TItf)(nil)}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText", nil)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrDecNotFound, err)
+	})
+
 	t.Run("error - nil embed in a held value", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ encoding.TextUnmarshaler }{struct{ *TItf }{}}
