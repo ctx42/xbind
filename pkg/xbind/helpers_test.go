@@ -351,6 +351,7 @@ func Test_hasNilEmbedded(t *testing.T) {
 		// --- Given ---
 		cyc := &TCycle{}
 		cyc.TCycle = cyc
+
 		seen := map[ptrKey]bool{}
 
 		// --- When ---
@@ -368,6 +369,7 @@ func Test_hasNilEmbedded(t *testing.T) {
 			*TPromZero
 		}{outer: &outer{}}
 		s.TPromZero = &s.X
+
 		seen := map[ptrKey]bool{}
 
 		// --- When ---

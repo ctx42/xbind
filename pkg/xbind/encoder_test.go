@@ -294,14 +294,14 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("custom marshaler pointer receiver", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
-		s := &TStructMar{
+		tsm := &TStructMar{
 			fStr:  "fStr",
 			fInt:  10,
 			fsInt: []int{0, 1},
 		}
 
 		// --- When ---
-		err := NewEncoder().Encode(dst, s)
+		err := NewEncoder().Encode(dst, tsm)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -848,10 +848,10 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("error - top level marshaler", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
-		s := TMarValVal{fStr: "abcd"}
+		mvv := TMarValVal{fStr: "abcd"}
 
 		// --- When ---
-		err := NewEncoder().Encode(dst, s)
+		err := NewEncoder().Encode(dst, mvv)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "string too long", err)
@@ -1122,11 +1122,11 @@ func Test_Encoder_Encode(t *testing.T) {
 	t.Run("pointer to pointer to TextMarshaler", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
-		lvl := new(TLevel(7))
+		tlv := new(TLevel(7))
 		s := &struct {
 			PP **TLevel `url:"pp"`
 			NP **TLevel `url:"np"`
-		}{PP: &lvl}
+		}{PP: &tlv}
 
 		// --- When ---
 		err := NewEncoder().Encode(dst, s)
@@ -2398,8 +2398,8 @@ func Test_Encoder_encodeMap(t *testing.T) {
 	t.Run("nil key and nil value", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
-		lvl := TLevel(1)
-		src := reflect.ValueOf(map[*TLevel]*int{nil: new(1), &lvl: nil})
+		tlv := TLevel(1)
+		src := reflect.ValueOf(map[*TLevel]*int{nil: new(1), &tlv: nil})
 		est := newEncState()
 
 		// --- When ---

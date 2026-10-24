@@ -7,7 +7,6 @@ import (
 	"database/sql/driver"
 	"encoding"
 	"errors"
-	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -528,18 +527,6 @@ type TBox struct {
 // TPoint is a struct decoded and encoded as one "X,Y" value by the functions
 // decPoint and encPoint.
 type TPoint struct{ X, Y int }
-
-// decPoint decodes a [TPoint] from "X,Y".
-func decPoint(s string) (TPoint, error) {
-	var pnt TPoint
-	_, err := fmt.Sscanf(s, "%d,%d", &pnt.X, &pnt.Y)
-	return pnt, err
-}
-
-// encPoint encodes a [TPoint] as "X,Y".
-func encPoint(pnt TPoint) (string, error) {
-	return fmt.Sprintf("%d,%d", pnt.X, pnt.Y), nil
-}
 
 // TNode is a recursive struct: a linked list node.
 type TNode struct {

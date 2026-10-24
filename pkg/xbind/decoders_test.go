@@ -82,7 +82,7 @@ func Test_decFor_tabular(t *testing.T) {
 		testN string
 
 		typ  reflect.Type
-		want decFn
+		wFn  decFn
 		vls  []string
 		wVal any
 	}{
@@ -161,7 +161,7 @@ func Test_decFor_tabular(t *testing.T) {
 			have := decFor(tc.typ, make(decReg))
 
 			// --- Then ---
-			want := reflect.ValueOf(tc.want).Pointer()
+			want := reflect.ValueOf(tc.wFn).Pointer()
 			assert.Equal(t, want, reflect.ValueOf(have).Pointer())
 
 			assert.Equal(t, tc.wVal, must.Value(have(tc.vls...)))

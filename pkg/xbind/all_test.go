@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"time"
 
@@ -31,3 +32,15 @@ func badTag(tag reflect.StructTag, nested bool) any {
 
 // waw represents the Warsaw timezone.
 var waw = must.Value(time.LoadLocation("Europe/Warsaw"))
+
+// decPoint decodes a [TPoint] from "X,Y".
+func decPoint(s string) (TPoint, error) {
+	var pnt TPoint
+	_, err := fmt.Sscanf(s, "%d,%d", &pnt.X, &pnt.Y)
+	return pnt, err
+}
+
+// encPoint encodes a [TPoint] as "X,Y".
+func encPoint(pnt TPoint) (string, error) {
+	return fmt.Sprintf("%d,%d", pnt.X, pnt.Y), nil
+}

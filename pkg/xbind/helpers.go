@@ -303,15 +303,15 @@ func declares(typ reflect.Type, name string) bool {
 }
 
 // isEmpty returns true if v is empty: a zero number; a nil or zero-length
-// string, array, slice, map or channel; a nil pointer, interface or function;
-// a pointer or interface to an empty value; a value whose IsZero method
-// returns true or whose [driver.Valuer] value is empty; any other zero value.
-// A bool is never empty. The rules are those of IsEmpty in the
-// github.com/ctx42/verax package. Methods are called only when v can be
-// interfaced, and not on a struct embedding a nil pointer or interface, or a
-// pointer or interface to one, whose promoted methods would panic; such a
-// struct is empty when all its fields are zero. A chain of pointers and
-// interfaces leading back to itself is not empty.
+// string, array, slice, map or channel; a nil pointer, interface or function; a
+// pointer or interface to an empty value; a value whose IsZero method returns
+// true or whose [driver.Valuer] value is empty; any other zero value. A bool is
+// never empty. The rules are those of IsEmpty in the github.com/ctx42/verax
+// package. Methods are called only when v can be interfaced, and not on a
+// struct embedding a nil pointer or interface, or a pointer or interface to
+// one, whose promoted methods would panic; such a struct is empty when all its
+// fields are zero. A chain of pointers and interfaces leading back to itself is
+// not empty.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true

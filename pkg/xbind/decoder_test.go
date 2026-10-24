@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ctx42/testing/pkg/assert"
+	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/testkit/pkg/reflectkit"
 	"github.com/ctx42/xrr/pkg/xrr"
 	"github.com/ctx42/xrr/pkg/xrr/xrrtest"
@@ -65,11 +66,10 @@ func Test_WithDecFunc(t *testing.T) {
 	WithDecFunc(decPoint)(dec)
 
 	// --- Then ---
-	have, err := dec.reg[reflect.TypeFor[TPoint]()]("1,2")
-	assert.NoError(t, err)
-	assert.Equal(t, TPoint{X: 1, Y: 2}, have)
+	fn := dec.reg[reflect.TypeFor[TPoint]()]
+	assert.Equal(t, TPoint{X: 1, Y: 2}, must.Value(fn("1,2")))
 
-	_, err = dec.reg[reflect.TypeFor[TPoint]()]("1,2", "3,4")
+	_, err := fn("1,2", "3,4")
 	assert.ErrorIs(t, ErrReqSingleValue, err)
 }
 
@@ -1656,8 +1656,7 @@ func Test_Decoder_Decode(t *testing.T) {
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := map[*string]TItem{&key: {Size: 1, Name: "x"}}
-		assert.Equal(t, want, dst.M)
+		assert.Equal(t, map[*string]TItem{&key: {Size: 1, Name: "x"}}, dst.M)
 	})
 
 	t.Run("prefilled key holding a pointer", func(t *testing.T) {
