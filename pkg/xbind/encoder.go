@@ -45,14 +45,26 @@ func WithEncTag(tag string) EncoderOption {
 // fn: fields of type T or *T, and slice, array and map elements and map keys
 // of those types. The function takes precedence over the [Marshaler] and
 // [encoding.TextMarshaler] methods of T and the encoders the package
-// provides, [time.Duration] included.
+// provides, [time.Duration] included. For a pointer T, fn encodes the type T
+// points to, as [WithDecFunc] decodes it: fn gets the address of the value, or
+// of a copy when the value has none, and never a nil pointer.
 func WithEncFunc[T any](fn func(T) (string, error)) EncoderOption {
 	typ := reflect.TypeFor[T]()
+	isPtr := typ.Kind() == reflect.Pointer
+	if isPtr {
+		typ = typ.Elem() // The encoder dereferences pointers first.
+	}
 	return func(enc *Encoder) {
 		if enc.reg == nil {
 			enc.reg = make(encReg)
 		}
 		enc.reg[typ] = func(v reflect.Value) (string, error) {
+			if isPtr {
+				if !v.CanAddr() {
+					v = addressable(v) // A copy has an address.
+				}
+				v = v.Addr()
+			}
 			val, _ := reflect.TypeAssert[T](v)
 			return fn(val)
 		}

@@ -34,15 +34,41 @@ func Test_WithEncTag(t *testing.T) {
 }
 
 func Test_WithEncFunc(t *testing.T) {
-	// --- Given ---
-	enc := &Encoder{}
+	t.Run("value type", func(t *testing.T) {
+		// --- Given ---
+		enc := &Encoder{}
 
-	// --- When ---
-	WithEncFunc(encPoint)(enc)
+		// --- When ---
+		WithEncFunc(encPoint)(enc)
 
-	// --- Then ---
-	fn := enc.reg[reflect.TypeFor[TPoint]()]
-	assert.Equal(t, "1,2", must.Value(fn(reflect.ValueOf(TPoint{X: 1, Y: 2}))))
+		// --- Then ---
+		fn := enc.reg[reflect.TypeFor[TPoint]()]
+		have := must.Value(fn(reflect.ValueOf(TPoint{X: 1, Y: 2})))
+		assert.Equal(t, "1,2", have)
+	})
+
+	t.Run("pointer type", func(t *testing.T) {
+		// --- Given ---
+		enc := &Encoder{}
+		var args []*TPoint
+		ptrFn := func(pnt *TPoint) (string, error) {
+			args = append(args, pnt)
+			return encPoint(*pnt)
+		}
+
+		// --- When ---
+		WithEncFunc(ptrFn)(enc)
+
+		// --- Then ---
+		fn := enc.reg[reflect.TypeFor[TPoint]()]
+		assert.NotNil(t, fn)
+
+		pnt := &TPoint{X: 1, Y: 2}
+		assert.Equal(t, "1,2", must.Value(fn(reflect.ValueOf(pnt).Elem())))
+		assert.Equal(t, "3,4", must.Value(fn(reflect.ValueOf(TPoint{3, 4}))))
+		assert.Len(t, 2, args)
+		assert.Same(t, pnt, args[0])
+	})
 }
 
 func Test_NewEncoder(t *testing.T) {
@@ -1331,6 +1357,47 @@ func Test_Encoder_Encode(t *testing.T) {
 		// --- Then ---
 		assert.NoError(t, err)
 		assert.Equal(t, url.Values{"l": {"1,2", "3,4"}}, dst)
+	})
+
+	t.Run("registered for a pointer type", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder(WithEncFunc(func(pnt *TPoint) (string, error) {
+			return encPoint(*pnt)
+		}))
+		type box struct {
+			P  TPoint         `url:"p"`
+			PP *TPoint        `url:"pp"`
+			L  []TPoint       `url:"l"`
+			M  map[TPoint]int `url:"m"`
+		}
+		dst := url.Values{}
+		src := &box{
+			P:  TPoint{1, 2},
+			PP: &TPoint{3, 4},
+			L:  []TPoint{{5, 6}},
+			M:  map[TPoint]int{{7, 8}: 1},
+		}
+
+		// --- When ---
+		err := enc.Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"p":      {"1,2"},
+			"pp":     {"3,4"},
+			"l":      {"5,6"},
+			"m[7,8]": {"1"},
+		}
+		assert.Equal(t, want, dst)
+
+		dec := NewDecoder(WithDecFunc(func(v string) (*TPoint, error) {
+			pnt, err := decPoint(v)
+			return &pnt, err
+		}))
+		back := &box{}
+		assert.NoError(t, dec.Decode(back, dst))
+		assert.Equal(t, src, back)
 	})
 
 	t.Run("registered encoder", func(t *testing.T) {
