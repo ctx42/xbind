@@ -1474,6 +1474,33 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, "x: is missing (ECMissing)", err)
 	})
 
+	t.Run("error - present field with a rejected key", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			Next *node `url:"next,present"`
+			V    int   `url:"v"`
+		}
+		dst := &struct {
+			IDs  []int `url:"ids,present"`
+			Node node  `url:"node"`
+		}{}
+		src := url.Values{
+			"ids[1001]":             {"1"},
+			"node.next.next.next.v": {"2"},
+		}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxDepth(3)).Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"ids[1001]: invalid value: index 1001 over the limit 1000 " +
+			"(ECInvValue); " +
+			"node.next.next.next.v: invalid value: key depth over the " +
+			"limit 3 (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("error - present fields in reached elements", func(t *testing.T) {
 		// --- Given ---
 		type item struct {
@@ -3161,7 +3188,7 @@ func Test_Decoder_plan(t *testing.T) {
 		want := "invalid value: key depth over the limit 3"
 		assert.ErrorEqual(t, want, err)
 		assert.ErrorIs(t, ErrInvValue, err)
-		assert.Nil(t, have)
+		assert.Len(t, 4, have)
 	})
 
 	t.Run("error - segment into an interface", func(t *testing.T) {
@@ -3429,6 +3456,30 @@ func Test_state_markReset(t *testing.T) {
 		assert.Len(t, 1, stt.log)
 		assert.Equal(t, []int{1, 2}, stt.log[0].old.Interface())
 	})
+}
+
+func Test_state_markReached(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	steps := []step{
+		{kind: stepField, idx: []int{5}, name: "nest"},
+		{kind: stepKey, key: "a", name: "[a]"},
+		{kind: stepIndex, pos: 1, name: "[1]"},
+		{kind: stepField, idx: []int{0}, name: "a.b"},
+	}
+
+	// --- When ---
+	stt.markReached(steps)
+
+	// --- Then ---
+	want := map[string]bool{
+		"":                true,
+		"nest":            true,
+		"nest[a]":         true,
+		"nest[a][1]":      true,
+		"nest[a][1][a.b]": true,
+	}
+	assert.Equal(t, want, stt.reached)
 }
 
 func Test_state_undo(t *testing.T) {

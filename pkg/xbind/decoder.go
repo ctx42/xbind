@@ -235,6 +235,9 @@ func (dec *Decoder) decode(
 		}
 		// Only the key names nothing; a value error may wrap the sentinel.
 		unknown := errors.Is(err, ErrUnkFieldPath)
+		if !unknown && errors.Is(err, ErrInvValue) {
+			stt.markReached(steps) // A key the plan rejects was still sent.
+		}
 		if err == nil {
 			mark := len(stt.log)
 			if err = dec.apply(val, steps, vls, stt, ""); err != nil {
@@ -342,8 +345,8 @@ var errIgnored = errors.New("ignored field")
 // when it has a promoted UnmarshalText method. A key naming nothing returns
 // [ErrUnkFieldPath], one naming an ignored field returns errIgnored, and an
 // index over the limit or past an array end, or a key taking more steps than
-// the depth limit, returns an error wrapping [ErrInvValue]. The levels of the
-// structs come from stt.
+// the depth limit, returns an error wrapping [ErrInvValue], together with the
+// steps it planned until then. The levels of the structs come from stt.
 func (dec *Decoder) plan(
 	typ reflect.Type,
 	segs []segment,
@@ -355,7 +358,8 @@ func (dec *Decoder) plan(
 		if len(steps) > dec.depthLimit() {
 			const format = "%w: key depth over the limit %d"
 			code := xrr.WithCode(ECInvValue)
-			return nil, xrr.Newf(format, ErrInvValue, dec.depthLimit(), code)
+			err := xrr.Newf(format, ErrInvValue, dec.depthLimit(), code)
+			return steps, err
 		}
 		typ = indirect(typ)
 		leaf := len(steps) > 0 && dec.isLeafType(typ)
@@ -407,7 +411,7 @@ func (dec *Decoder) plan(
 		default: // A slice or an array, the other types that are not leaves.
 			pos, err := dec.index(typ, seg.text)
 			if err != nil {
-				return nil, err
+				return steps, err
 			}
 			name := "[" + strconv.Itoa(pos) + "]"
 			steps = append(steps, step{kind: stepIndex, pos: pos, name: name})
@@ -574,6 +578,21 @@ func (stt *state) save(val reflect.Value) {
 	old := reflect.New(val.Type()).Elem()
 	old.Set(val)
 	stt.log = append(stt.log, resetLog{val: val, old: old, saved: true})
+}
+
+// markReached records the canonical paths of the steps, those a src key took
+// before plan rejected it, as reached; a map key keeps its src text.
+func (stt *state) markReached(steps []step) {
+	pth := ""
+	stt.reached[pth] = true
+	for _, stp := range steps {
+		if stp.kind == stepField {
+			pth = fieldPath(pth, stp.name)
+		} else {
+			pth += stp.name
+		}
+		stt.reached[pth] = true
+	}
 }
 
 // undo forgets the resets made since the log held n entries, and sets back
