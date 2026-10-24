@@ -42,13 +42,14 @@ func WithEncTag(tag string) EncoderOption {
 	return func(enc *Encoder) { enc.tag = tag }
 }
 
-// WithEncFunc is a [NewEncoder] option encoding every value of type T with
-// fn: fields of type T or *T, and slice, array and map elements and map keys
-// of those types. The function takes precedence over the [Marshaler] and
-// [encoding.TextMarshaler] methods of T and the encoders the package
-// provides, [time.Duration] included. For a pointer T, fn encodes the type T
-// points to, as [WithDecFunc] decodes it: fn gets the address of the value, or
-// of a copy when the value has none, and never a nil pointer.
+// WithEncFunc is a [NewEncoder] option encoding every value of type T with fn:
+// fields of type T or *T, and slice, array and map elements and map keys of
+// those types. The function takes precedence over the [Marshaler] and
+// [encoding.TextMarshaler] methods of T and the encoders the package provides,
+// [time.Duration] included. For a pointer T, fn encodes the type T points to,
+// as [WithDecFunc] decodes it: fn gets the address of the value, or of a copy
+// when the value has none, and never a nil pointer. When functions are
+// registered for both T and *T, the later one encodes both.
 func WithEncFunc[T any](fn func(T) (string, error)) EncoderOption {
 	typ := reflect.TypeFor[T]()
 	isPtr := typ.Kind() == reflect.Pointer

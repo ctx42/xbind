@@ -52,22 +52,22 @@ func WithDecMaxIndex(n int) DecoderOption {
 // a src key may take into dst, one per struct field, map key and slice or array
 // index ("list[0].name" takes three, and the rest of a key a map of values
 // takes as its key is one); a deeper key is an [ErrInvValue] field error. A
-// zero or negative n rejects every key. A key costs memory quadratic in its
-// depth, so a large n lets a small src use a lot of memory when dst has a
-// recursive type. The default is [DefaultMaxDepth].
+// zero or negative n rejects every key that names a field. A key costs memory
+// quadratic in its depth, so a large n lets a small src use a lot of memory
+// when dst has a recursive type. The default is [DefaultMaxDepth].
 func WithDecMaxDepth(n int) DecoderOption {
 	return func(dec *Decoder) { dec.maxDepth = &n }
 }
 
-// WithDecFunc is a [NewDecoder] option decoding every value of type T with
-// fn: fields of type T or *T, and slice, array and map elements and map keys
-// of those types. A value of type T takes a single src value, and an error
+// WithDecFunc is a [NewDecoder] option decoding every value of type T with fn:
+// fields of type T or *T, and slice, array and map elements and map keys of
+// those types. A value of type T takes a single src value, and an error
 // returned by fn is returned as is. The function takes precedence over the
-// [encoding.TextUnmarshaler] method of T and the decoders the package
-// provides, [time.Time] and [time.Duration] included. For a pointer T, fn
-// decodes the type T points to, and a nil pointer it returns is an
-// [ErrInvValue] error. For an interface T, fn may return nil, which sets a
-// nil interface.
+// [encoding.TextUnmarshaler] method of T and the decoders the package provides,
+// [time.Time] and [time.Duration] included. For a pointer T, fn decodes the
+// type T points to, and a nil pointer it returns is an [ErrInvValue] error.
+// When functions are registered for both T and *T, the later one decodes both.
+// For an interface T, fn may return nil, which sets a nil interface.
 func WithDecFunc[T any](fn func(string) (T, error)) DecoderOption {
 	typ := reflect.TypeFor[T]()
 	isPtr := typ.Kind() == reflect.Pointer

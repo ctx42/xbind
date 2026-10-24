@@ -343,9 +343,10 @@ func declares(typ reflect.Type, name string) bool {
 // package. Methods are called only when v can be interfaced, and not on a
 // struct embedding a nil pointer or interface, or a pointer or interface to
 // one, whose promoted methods would panic, unless the struct declares the
-// method; such a struct is empty when all its fields are zero, and so is one
-// whose declared method panics. A chain of pointers and interfaces leading back
-// to itself is not empty.
+// method; such a struct is empty when all its fields are zero. A declared
+// method that panics counts as absent, so a declared Value decides instead of a
+// panicking IsZero, and the fields decide when no method is left. A chain of
+// pointers and interfaces leading back to itself is not empty.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
