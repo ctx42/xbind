@@ -1440,6 +1440,40 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - present field behind a nil embed", func(t *testing.T) {
+		// --- Given ---
+		type base struct {
+			ID int `url:"id,present"`
+		}
+		dst := &struct {
+			*base
+			N int `url:"n"`
+		}{}
+		src := url.Values{"n": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldsEqual(t, "id: is missing (ECMissing)", err)
+	})
+
+	t.Run("error - present field behind a self embed", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			*node     //nolint:unused
+			X     int `url:"x,present"`
+		}
+		dst := &struct{ node }{}
+		src := url.Values{}
+
+		// --- When ---
+		err := NewDecoder(WithDecAllowUnknown()).Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldsEqual(t, "x: is missing (ECMissing)", err)
+	})
+
 	t.Run("error - present fields in reached elements", func(t *testing.T) {
 		// --- Given ---
 		type item struct {
@@ -3698,6 +3732,46 @@ func Test_Decoder_required_tabular(t *testing.T) {
 			assert.Equal(t, tc.want, have)
 		})
 	}
+}
+
+func Test_Decoder_presentIn(t *testing.T) {
+	type base struct {
+		ID int    `url:"id,present"`
+		N  string `url:"n"`
+	}
+
+	t.Run("present field no key reached", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[base]()
+		lvl := newLevel(typ, "url")
+		types := map[reflect.Type]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().presentIn("", typ, lvl, types, newState(), setErr)
+
+		// --- Then ---
+		assert.Equal(t, []string{"id"}, have)
+		assert.Len(t, 0, types)
+	})
+
+	t.Run("struct no key reached", func(t *testing.T) {
+		// --- Given ---
+		typ := reflect.TypeFor[base]()
+		lvl := newLevel(typ, "url")
+		types := map[reflect.Type]bool{}
+
+		var have []string
+		setErr := func(pth string, _ error) { have = append(have, pth) }
+
+		// --- When ---
+		NewDecoder().presentIn("p", typ, lvl, types, newState(), setErr)
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
 }
 
 func Test_Decoder_requiredIn(t *testing.T) {

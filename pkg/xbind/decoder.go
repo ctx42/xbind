@@ -769,13 +769,14 @@ func (dec *Decoder) isLeafValue(typ reflect.Type) bool {
 // of dst whose value is empty (see isEmpty). It sets an [ErrMissing] error
 // instead for each field with the "present" option that no src key reached (see
 // state), in dst at the empty prefix or in a struct a src key reached. A nil
-// struct pointer is an absent struct, so its fields are not checked. Ignored
-// fields and unexported fields, other than embedded structs, are skipped; an
-// embedded struct has no path, so its required option is ignored. The lvl is
-// the level position of dst; a field its key does not name there is skipped.
-// The seen map holds the struct pointers, maps and slices on the path to dst,
-// so a cycle ends. The paths are canonical; stt gives the text of the map keys
-// src keys reached.
+// struct pointer is an absent struct, so its fields are not checked, though the
+// present fields of an embedded one are (see presentIn). Ignored fields and
+// unexported fields, other than embedded structs, are skipped; an embedded
+// struct has no path, so its required option is ignored. The lvl is the level
+// position of dst; a field its key does not name there is skipped. The seen map
+// holds the struct pointers, maps and slices on the path to dst, so a cycle
+// ends. The paths are canonical; stt gives the text of the map keys src keys
+// reached.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
@@ -807,9 +808,16 @@ func (dec *Decoder) required(
 				dec.required(prefix, fld.StructValue(), nxt, seen, stt, setErr)
 				continue
 			}
+			if val.IsNil() {
+				// An absent struct, whose fields still name keys of dst.
+				typ := indirect(fld.Type())
+				types := map[reflect.Type]bool{}
+				dec.presentIn(prefix, typ, nxt, types, stt, setErr)
+				continue
+			}
 			key := ptrKey{ptr: val.Pointer(), typ: val.Type()}
-			if val.IsNil() || seen[key] {
-				continue // An absent struct, or a pointer cycle.
+			if seen[key] {
+				continue // A pointer cycle.
 			}
 			seen[key] = true
 			dec.required(prefix, fld.StructValue(), nxt, seen, stt, setErr)
@@ -827,6 +835,48 @@ func (dec *Decoder) required(
 			setErr(fldPath, ErrRequired)
 		}
 		dec.requiredIn(fldPath, fld.Value(), seen, stt, setErr)
+	}
+}
+
+// presentIn sets an [ErrMissing] error, using setErr, for each field with the
+// "present" option that no src key reached, of the typ struct embedded through
+// a nil pointer at the lvl position of a struct at prefix, and of the structs
+// typ embeds. The fields are checked only in dst, at the empty prefix, or in a
+// struct a src key reached; the other fields of typ are in structs no key
+// reached. The types map holds the struct types on the embedding path, so a
+// recursive type ends.
+func (dec *Decoder) presentIn(
+	prefix string,
+	typ reflect.Type,
+	lvl level,
+	types map[reflect.Type]bool,
+	stt *state,
+	setErr func(string, error),
+) {
+
+	if types[typ] || prefix != "" && !stt.reached[prefix] {
+		return
+	}
+	types[typ] = true
+	defer delete(types, typ)
+	for i, fld := range mirror.ReflectType(typ).Fields() {
+		tag, _ := fld.Tag(dec.tagName()) // Decode checked the tags.
+		if tag.IsIgnored() {
+			continue
+		}
+		if fld.IsAnonymous() && indirect(fld.Type()).Kind() == reflect.Struct {
+			sub := indirect(fld.Type())
+			dec.presentIn(prefix, sub, lvl.embedded(i), types, stt, setErr)
+			continue
+		}
+		name := tag.NameOrField()
+		if !lvl.names(name, i) {
+			continue
+		}
+		fldPath := fieldPath(prefix, name)
+		if tag.Contains("present") && !stt.reached[fldPath] {
+			setErr(fldPath, ErrMissing)
+		}
 	}
 }
 
