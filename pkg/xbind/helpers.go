@@ -5,6 +5,7 @@ package xbind
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -118,7 +119,10 @@ type zeroer interface{ IsZero() bool }
 // A struct implementing the IsZero method, on its value or on its address
 // when v is addressable, is zero when the method says so; other structs,
 // structs read through unexported fields, structs embedding a nil pointer or
-// interface, and arrays are zero when all their elements are.
+// interface, and arrays are zero when all their elements are. A struct
+// embedding a nil pointer or interface has its IsZero method called only when
+// it declares the method itself, and a panic of the method makes its fields
+// decide.
 func isZero(v reflect.Value) bool {
 	switch v.Kind() { //nolint:exhaustive
 	case reflect.Map, reflect.Slice:
@@ -133,18 +137,22 @@ func isZero(v reflect.Value) bool {
 		return true
 
 	case reflect.Struct:
-		if hasNilEmbedded(v, map[ptrKey]bool{}) {
+		nilEmb := hasNilEmbedded(v, map[ptrKey]bool{})
+		if nilEmb && !declares(v.Type(), "IsZero") {
 			// A method promoted through a nil pointer or interface would panic.
 			return isZeroFields(v)
 		}
+		var zer zeroer
 		if v.CanAddr() && v.Addr().CanInterface() {
-			if zer, ok := v.Addr().Interface().(zeroer); ok {
-				return zer.IsZero()
-			}
+			zer, _ = v.Addr().Interface().(zeroer)
 		}
-		if v.CanInterface() {
-			if zer, ok := v.Interface().(zeroer); ok {
-				return zer.IsZero()
+		if zer == nil && v.CanInterface() {
+			zer, _ = v.Interface().(zeroer)
+		}
+		if zer != nil {
+			// A declared method may still read through the nil embed.
+			if zero, ok := tryIsZero(zer, nilEmb); ok {
+				return zero
 			}
 		}
 		return isZeroFields(v)
@@ -152,6 +160,31 @@ func isZero(v reflect.Value) bool {
 	default:
 		return v.IsZero()
 	}
+}
+
+// errPanic reports a method that panicked; see tryValue.
+var errPanic = errors.New("method panicked")
+
+// tryIsZero returns what the IsZero method of zer returns, and true. With
+// guard true, a panic of the method is recovered and returns false.
+func tryIsZero(zer zeroer, guard bool) (zero, ok bool) {
+	if guard {
+		defer func() { _ = recover() }()
+	}
+	return zer.IsZero(), true
+}
+
+// tryValue returns what the Value method of vlr returns. With guard true, a
+// panic of the method is recovered and returns errPanic.
+func tryValue(vlr driver.Valuer, guard bool) (val driver.Value, err error) {
+	if guard {
+		defer func() {
+			if recover() != nil {
+				val, err = nil, errPanic
+			}
+		}()
+	}
+	return vlr.Value()
 }
 
 // isZeroFields returns true if all the fields of the struct v are zero.
@@ -309,9 +342,10 @@ func declares(typ reflect.Type, name string) bool {
 // never empty. The rules are those of IsEmpty in the github.com/ctx42/verax
 // package. Methods are called only when v can be interfaced, and not on a
 // struct embedding a nil pointer or interface, or a pointer or interface to
-// one, whose promoted methods would panic; such a struct is empty when all its
-// fields are zero. A chain of pointers and interfaces leading back to itself is
-// not empty.
+// one, whose promoted methods would panic, unless the struct declares the
+// method; such a struct is empty when all its fields are zero, and so is one
+// whose declared method panics. A chain of pointers and interfaces leading back
+// to itself is not empty.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
@@ -343,12 +377,17 @@ func isEmpty(v reflect.Value) bool {
 	}
 	nilEmb := base.Kind() == reflect.Struct &&
 		hasNilEmbedded(base, map[ptrKey]bool{})
-	if v.CanInterface() && !nilEmb {
-		if zer, ok := v.Interface().(zeroer); ok {
-			return zer.IsZero()
+	if v.CanInterface() {
+		// A declared method may still read through the nil embed.
+		zer, ok := v.Interface().(zeroer)
+		if ok && (!nilEmb || declares(base.Type(), "IsZero")) {
+			if zero, ok := tryIsZero(zer, nilEmb); ok {
+				return zero
+			}
 		}
-		if vlr, ok := v.Interface().(driver.Valuer); ok {
-			val, err := vlr.Value()
+		vlr, ok := v.Interface().(driver.Valuer)
+		if ok && (!nilEmb || declares(base.Type(), "Value")) {
+			val, err := tryValue(vlr, nilEmb)
 			rv := reflect.ValueOf(val)
 			// A value of its own type would be checked forever.
 			if err == nil && (!rv.IsValid() || rv.Type() != v.Type()) {

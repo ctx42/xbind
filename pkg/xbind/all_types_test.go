@@ -7,6 +7,7 @@ import (
 	"database/sql/driver"
 	"encoding"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -39,6 +40,10 @@ var (
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 	_ encoding.TextMarshaler   = TFltKey{}
 	_ encoding.TextMarshaler   = TGenText[int]{}
+	_ zeroer                   = TOwnZero{}
+	_ zeroer                   = TReadZero{}
+	_ driver.Valuer            = TOwnValuer{}
+	_ driver.Valuer            = TReadValuer{}
 )
 
 // TString is a test struct with string fields.
@@ -414,6 +419,34 @@ func (tlv *TLevel) UnmarshalText(text []byte) error {
 type TGenText[T any] struct{ V T }
 
 func (tgt TGenText[T]) MarshalText() ([]byte, error) { return nil, nil }
+
+// TOwnZero embeds an interface and declares its own IsZero method, which
+// reports it zero unless Set is true.
+type TOwnZero struct {
+	fmt.Stringer
+	Set bool
+}
+
+func (toz TOwnZero) IsZero() bool { return !toz.Set }
+
+// TReadZero declares an IsZero method reading through its embedded pointer.
+type TReadZero struct{ *TItem }
+
+func (trz TReadZero) IsZero() bool { return trz.Size == 0 }
+
+// TOwnValuer embeds an interface and declares its own Value method, which
+// returns S.
+type TOwnValuer struct {
+	fmt.Stringer
+	S string
+}
+
+func (tov TOwnValuer) Value() (driver.Value, error) { return tov.S, nil }
+
+// TReadValuer declares a Value method reading through its embedded pointer.
+type TReadValuer struct{ *TItem }
+
+func (trv TReadValuer) Value() (driver.Value, error) { return trv.Name, nil }
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.
 type TCycle struct{ *TCycle }

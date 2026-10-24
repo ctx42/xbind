@@ -291,6 +291,13 @@ func Test_isZero_tabular(t *testing.T) {
 		{"IsZero implementor", time.Time{}, true},
 		{"IsZero implementor non-zero", time.Now(), false},
 		{"IsZero method wins", time.Time{}.In(waw), true},
+		{
+			"own IsZero with a nil embed",
+			TOwnZero{Stringer: (*time.Duration)(nil)},
+			true,
+		},
+		{"own IsZero with a nil embed set", TOwnZero{Set: true}, false},
+		{"own IsZero panicking on a nil embed", TReadZero{}, true},
 		{"array of empty slices", [1][]int{{}}, true},
 		{"struct with empty slice", struct{ S []int }{[]int{}}, true},
 
@@ -309,6 +316,57 @@ func Test_isZero_tabular(t *testing.T) {
 			assert.Equal(t, tc.want, have)
 		})
 	}
+}
+
+func Test_tryIsZero(t *testing.T) {
+	t.Run("method result", func(t *testing.T) {
+		// --- When ---
+		zero, ok := tryIsZero(TOwnZero{}, true)
+
+		// --- Then ---
+		assert.True(t, zero)
+		assert.True(t, ok)
+	})
+
+	t.Run("recovered panic", func(t *testing.T) {
+		// --- When ---
+		zero, ok := tryIsZero(TReadZero{}, true)
+
+		// --- Then ---
+		assert.False(t, zero)
+		assert.False(t, ok)
+	})
+
+	t.Run("panic without guard", func(t *testing.T) {
+		// --- Given ---
+		call := func() { _, _ = tryIsZero(TReadZero{}, false) }
+
+		// --- When ---
+		have := assert.PanicMsg(t, call)
+
+		// --- Then ---
+		assert.NotNil(t, have)
+	})
+}
+
+func Test_tryValue(t *testing.T) {
+	t.Run("method result", func(t *testing.T) {
+		// --- When ---
+		have, err := tryValue(TOwnValuer{S: "a"}, true)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "a", have)
+	})
+
+	t.Run("error - recovered panic", func(t *testing.T) {
+		// --- When ---
+		have, err := tryValue(TReadValuer{}, true)
+
+		// --- Then ---
+		assert.ErrorIs(t, errPanic, err)
+		assert.Nil(t, have)
+	})
 }
 
 func Test_isZeroFields(t *testing.T) {
@@ -614,6 +672,26 @@ func Test_isEmpty_tabular(t *testing.T) {
 			"embedded IsZero",
 			reflect.ValueOf(TPromZero{new(time.Unix(1, 0))}),
 			false,
+		},
+		{
+			"own IsZero with a nil embed",
+			reflect.ValueOf(TOwnZero{Stringer: (*time.Duration)(nil)}),
+			true,
+		},
+		{
+			"own IsZero panicking on a nil embed",
+			reflect.ValueOf(TReadZero{}),
+			true,
+		},
+		{
+			"own Valuer with a nil embed",
+			reflect.ValueOf(TOwnValuer{Stringer: (*time.Duration)(nil)}),
+			true,
+		},
+		{
+			"own Valuer panicking on a nil embed",
+			reflect.ValueOf(TReadValuer{}),
+			true,
 		},
 		{"empty Valuer", reflect.ValueOf(TValuer("")), true},
 		{"Valuer", reflect.ValueOf(TValuer("a")), false},
