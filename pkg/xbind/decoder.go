@@ -116,19 +116,19 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // follow a dot ("list.0"). An index over [DefaultMaxIndex], or the limit
 // [WithDecMaxIndex] sets, is an [ErrInvValue] field error, and so is an index
 // adding more slice elements, gaps included, than the indexed keys of one call
-// may add: as many as the limit plus one, and one more per src key. Among the
-// fields of a struct and the structs it embeds, a key names the field Go
-// promotion selects, as in [encoding/json]. Errors of the src values are
-// returned as [xrr.FieldErrors] keyed by the src keys; the other values are
-// still set, and a key with an error changes nothing but what a failing
-// UnmarshalText method wrote through the pointers and maps its value holds. The
-// first key reaching a slice or an array replaces it: the values of one key
-// replace the elements, indexed keys fill a new slice whose gaps are zero
-// values, and array elements no key sets are zeroed; a field with no key keeps
-// its value. The src keys are applied in sorted order; a key reaching a value
-// another key sets, or one key setting the values of a slice or array other
-// keys index, is an [ErrInvValue] field error on the later key. Keys are added
-// to an existing map, and the values of a map are updated in place; keys
+// may add, the keys that fail included: as many as the limit plus one, and one
+// more per src key. Among the fields of a struct and the structs it embeds, a
+// key names the field Go promotion selects, as in [encoding/json]. Errors of
+// the src values are returned as [xrr.FieldErrors] keyed by the src keys; the
+// other values are still set, and a key with an error changes nothing but what
+// a failing UnmarshalText method wrote through the pointers and maps its value
+// holds. The first key reaching a slice or an array replaces it: the values of
+// one key replace the elements, indexed keys fill a new slice whose gaps are
+// zero values, and array elements no key sets are zeroed; a field with no key
+// keeps its value. The src keys are applied in sorted order; a key reaching a
+// value another key sets, or one key setting the values of a slice or array
+// other keys index, is an [ErrInvValue] field error on the later key. Keys are
+// added to an existing map, and the values of a map are updated in place; keys
 // decoding to equal values name one entry, and a key that is or holds a NaN is
 // an [ErrInvValue] field error. A nil pointer to a nested struct is allocated
 // only when a src key leads into it. A field with the "required" option is an
@@ -673,10 +673,11 @@ func (dec *Decoder) apply(
 		elem := dst.Index(stp.pos)
 		err = dec.apply(elem, steps[1:], vls, stt, pth+stp.name)
 		if err != nil && prev.IsValid() {
+			// The elements stay spent, so failing keys cannot grow slices
+			// without end.
 			for i := size; i < dst.Len(); i++ {
 				dst.Index(i).SetZero()
 			}
-			stt.budget += dst.Len() - size
 			dst.Set(prev) // The capacity it grew is dropped too.
 		}
 		return err

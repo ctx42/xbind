@@ -2257,7 +2257,7 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 11, dst.A[0].B)
 	})
 
-	t.Run("error - failed key gives back its budget", func(t *testing.T) {
+	t.Run("error - failed key spends its budget", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
 			A []int `url:"a"`
@@ -2269,10 +2269,12 @@ func Test_Decoder_Decode(t *testing.T) {
 		err := NewDecoder(WithDecMaxIndex(2)).Decode(dst, src)
 
 		// --- Then ---
-		want := "a[2]: invalid value: cannot convert `x` to int (ECInvValue)"
+		want := "" +
+			"a[2]: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"b[2]: invalid value: index 2 adds too many elements (ECInvValue)"
 		xrrtest.AssertFieldsEqual(t, want, err)
 		assert.Nil(t, dst.A)
-		assert.Equal(t, []int{0, 0, 1}, dst.B)
+		assert.Nil(t, dst.B)
 	})
 
 	t.Run("error - index limit option", func(t *testing.T) {
