@@ -240,10 +240,25 @@ written (`time.Time` as a date only, say), register a function with
 `WithDecFunc` or `WithEncFunc`. It takes precedence over the type's own
 methods and over the package's codecs:
 
+<!-- gmmce:pkg/xbind/ExampleWithDecFunc -->
 ```go
-dec := xbind.NewDecoder(xbind.WithDecFunc(func(s string) (time.Time, error) {
+type Query struct {
+	Day time.Time `url:"day"`
+}
+
+dateOnly := func(s string) (time.Time, error) {
 	return time.Parse(time.DateOnly, s)
-}))
+}
+dec := xbind.NewDecoder(xbind.WithDecFunc(dateOnly))
+
+dst := &Query{}
+if err := dec.Decode(dst, url.Values{"day": {"2026-01-02"}}); err != nil {
+	panic(err)
+}
+
+fmt.Println(dst.Day.Format(time.RFC3339))
+// Output:
+// 2026-01-02T00:00:00Z
 ```
 
 ### JSON bodies
