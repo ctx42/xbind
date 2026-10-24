@@ -1660,6 +1660,42 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, want, dst.M)
 	})
 
+	t.Run("prefilled value key of another type", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(s string) (any, error) {
+			return s, nil
+		}))
+		dst := &struct {
+			M map[any]int `url:"m"`
+		}{M: map[any]int{1: 10}}
+		src := url.Values{"m[1]": {"5"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[any]int{1: 10, "1": 5}, dst.M)
+	})
+
+	t.Run("prefilled pointer keys with one text", func(t *testing.T) {
+		// --- Given ---
+		k1, k2 := "a", "a"
+		dst := &struct {
+			M map[*string]int `url:"m"`
+		}{M: map[*string]int{&k1: 1, &k2: 2}}
+		src := url.Values{"m[a]": {"5"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 3, dst.M)
+		assert.Equal(t, 1, dst.M[&k1])
+		assert.Equal(t, 2, dst.M[&k2])
+	})
+
 	t.Run("error - NaN map key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {

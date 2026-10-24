@@ -180,6 +180,35 @@ func Test_isNaNKey_tabular(t *testing.T) {
 	}
 }
 
+func Test_isPtrKey_tabular(t *testing.T) {
+	ptrItf := reflect.ValueOf(map[any]int{new(1): 1}).MapKeys()[0]
+	valItf := reflect.ValueOf(map[any]int{1: 1}).MapKeys()[0]
+	nilItf := reflect.ValueOf(map[any]int{nil: 1}).MapKeys()[0]
+
+	tt := []struct {
+		testN string
+
+		key  reflect.Value
+		want bool
+	}{
+		{"pointer", reflect.ValueOf(new(1)), true},
+		{"value", reflect.ValueOf(1), false},
+		{"interface holding a pointer", ptrItf, true},
+		{"interface holding a value", valItf, false},
+		{"nil interface", nilItf, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isPtrKey(tc.key)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_isZero(t *testing.T) {
 	t.Run("struct read through unexported field", func(t *testing.T) {
 		// --- Given ---

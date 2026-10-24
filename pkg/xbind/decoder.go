@@ -466,10 +466,11 @@ func (stt *state) level(typ reflect.Type, key string) level {
 // pointer keys and keys holding pointers find it again, and its text is the
 // encoded text or, when the key type has no encoder or keep is true, the src
 // text of the first key. Pass keep for a key type with a registered decoder,
-// whose src text may differ from the encoded one. The keys already in the map
-// m name their entries too, the first time a key reaches m, so a pointer key
-// there finds its entry and the value is updated in place; the text of such
-// an entry comes from the first src key naming it.
+// whose src text may differ from the encoded one. The pointer keys already in
+// the map m, which no lookup by value finds, name their entries too, the first
+// time a key reaches m, so the value of such an entry is updated in place and
+// its text comes from the first src key naming it; pointer keys there with one
+// text name no entry.
 func (stt *state) entry(
 	pth string,
 	m reflect.Value,
@@ -482,10 +483,17 @@ func (stt *state) entry(
 		stt.maps[pth] = true
 		for it := m.MapRange(); it.Next(); {
 			mk := it.Key()
-			id := pth + "[" + keyText(mk, "%#v") + "]"
-			if _, ok := stt.entries[id]; !ok {
-				stt.entries[id] = mapEntry{key: mk, text: keyText(mk, "%v")}
+			if !isPtrKey(mk) {
+				continue
 			}
+			id := pth + "[" + keyText(mk, "%#v") + "]"
+			ent, ok := stt.entries[id]
+			if ok {
+				ent.key = reflect.Value{} // Keys with one text are ambiguous.
+			} else {
+				ent = mapEntry{key: mk, text: keyText(mk, "%v")}
+			}
+			stt.entries[id] = ent
 		}
 	}
 	id := pth + "[" + keyText(key, "%#v") + "]"
@@ -493,7 +501,7 @@ func (stt *state) entry(
 	if ok && ent.named {
 		return ent
 	}
-	if !ok {
+	if !ok || !ent.key.IsValid() || !isPtrKey(key) {
 		ent.key = key
 	}
 	ent.text, ent.named = txt, true

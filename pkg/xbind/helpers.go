@@ -77,6 +77,15 @@ func isNaNKey(key reflect.Value) bool {
 	return isNaN(key) || key.Kind() != reflect.Pointer && !key.Equal(key)
 }
 
+// isPtrKey returns true if the map key is a pointer, or an interface holding
+// one, which a map lookup finds by its address only.
+func isPtrKey(key reflect.Value) bool {
+	if key.Kind() == reflect.Interface && !key.IsNil() {
+		key = key.Elem()
+	}
+	return key.Kind() == reflect.Pointer
+}
+
 // zeroer is implemented by types reporting whether they are zero.
 type zeroer interface{ IsZero() bool }
 
