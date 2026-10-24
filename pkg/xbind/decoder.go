@@ -880,9 +880,11 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 
 // allocPath allocates the nil pointers on the path of embedded fields the
 // struct dst gets the method name through (see methodPath), so the method
-// has a receiver it can set. A nil pointer on the path that cannot be set,
+// has a receiver it can set; past an embedded interface, the path goes on in
+// the struct pointer it holds. A nil pointer on the path that cannot be set,
 // an embedded pointer to an unexported type, returns [ErrUnexported], and a
-// nil interface returns an error wrapping [ErrDecNotFound].
+// nil interface, or one holding a value whose method would be reached through
+// a nil embedded field, returns an error wrapping [ErrDecNotFound].
 func allocPath(dst reflect.Value, name string) error {
 	pth, _ := methodPath(dst.Type(), name, map[reflect.Type]bool{})
 	val := dst
@@ -893,6 +895,21 @@ func allocPath(dst reflect.Value, name string) error {
 			if val.IsNil() {
 				return decNotFound(dst.Type())
 			}
+			// The rest of the path is in the value the interface holds.
+			held := val.Elem()
+			if held.Kind() == reflect.Pointer && !held.IsNil() &&
+				held.Elem().Kind() == reflect.Struct {
+
+				return allocPath(held.Elem(), name)
+			}
+			// Nothing can be allocated in a value the interface holds.
+			sub, _ := methodPath(held.Type(), name, map[reflect.Type]bool{})
+			nilEmb := held.Kind() == reflect.Struct &&
+				hasNilEmbedded(held, map[ptrKey]bool{})
+			if len(sub) > 0 && (isNil(held) || nilEmb) {
+				return decNotFound(dst.Type())
+			}
+			return nil
 
 		case reflect.Pointer:
 			if val.IsNil() {

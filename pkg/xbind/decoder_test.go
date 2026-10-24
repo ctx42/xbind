@@ -1058,6 +1058,24 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, TTextPtr(42), *dst.F.TTextPtr)
 	})
 
+	t.Run("unmarshaler behind an embedded interface", func(t *testing.T) {
+		// --- Given ---
+		type wrap struct{ *TItf }
+		type itf = struct{ encoding.TextUnmarshaler }
+		in := &wrap{}
+		dst := &struct {
+			F itf `url:"f"`
+		}{F: itf{in}}
+		src := url.Values{"f": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "x", in.Str)
+	})
+
 	t.Run("own unmarshaler leaves embeds nil", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -3690,6 +3708,32 @@ func Test_allocPath(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
 		assert.Nil(t, s.tUnmInner)
+	})
+
+	t.Run("nil pointers behind an embedded interface", func(t *testing.T) {
+		// --- Given ---
+		in := &struct{ *TItf }{}
+		s := &struct{ encoding.TextUnmarshaler }{in}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText")
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.NotNil(t, in.TItf)
+	})
+
+	t.Run("error - nil embed in a held value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ encoding.TextUnmarshaler }{struct{ *TItf }{}}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText")
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrDecNotFound, err)
 	})
 
 	t.Run("error - nil interface on the path", func(t *testing.T) {
