@@ -3777,6 +3777,23 @@ func Test_allocPath(t *testing.T) {
 		assert.NotNil(t, in.TItf)
 	})
 
+	t.Run("held value with a nil embed off the path", func(t *testing.T) {
+		// --- Given ---
+		in := &TItf{}
+		held := struct {
+			*TItf
+			*TItem
+		}{TItf: in}
+		s := &struct{ encoding.TextUnmarshaler }{held}
+		dst := reflect.ValueOf(s).Elem()
+
+		// --- When ---
+		err := allocPath(dst, "UnmarshalText", nil)
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
 	t.Run("error - nil embed in a held value", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ encoding.TextUnmarshaler }{struct{ *TItf }{}}
@@ -3800,6 +3817,50 @@ func Test_allocPath(t *testing.T) {
 		// --- Then ---
 		assert.ErrorIs(t, ErrDecNotFound, err)
 	})
+}
+
+func Test_nilOnPath_tabular(t *testing.T) {
+	type wrap struct{ *TItf }
+
+	tt := []struct {
+		testN string
+
+		val  any
+		want bool
+	}{
+		{"declared", &TItf{}, false},
+		{"nil pointer", (*wrap)(nil), true},
+		{"nil embed on the path", wrap{}, true},
+		{"embed on the path", wrap{&TItf{}}, false},
+		{
+			"nil embed off the path",
+			struct {
+				wrap
+				*TItem
+			}{wrap: wrap{&TItf{}}},
+			false,
+		},
+		{
+			"nil embed behind an interface",
+			struct{ encoding.TextUnmarshaler }{wrap{}},
+			true,
+		},
+		{
+			"nil interface",
+			struct{ encoding.TextUnmarshaler }{},
+			true,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := nilOnPath(reflect.ValueOf(tc.val), "UnmarshalText")
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_setDst(t *testing.T) {

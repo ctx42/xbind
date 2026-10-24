@@ -920,9 +920,7 @@ func allocPath(dst reflect.Value, name string, save func(reflect.Value)) error {
 			}
 			// Nothing can be allocated in a value the interface holds.
 			sub, _ := methodPath(held.Type(), name, map[reflect.Type]bool{})
-			nilEmb := held.Kind() == reflect.Struct &&
-				hasNilEmbedded(held, map[ptrKey]bool{})
-			if len(sub) > 0 && (isNil(held) || nilEmb) {
+			if len(sub) > 0 && nilOnPath(held, name) {
 				return decNotFound(dst.Type())
 			}
 			return nil
@@ -941,6 +939,33 @@ func allocPath(dst reflect.Value, name string, save func(reflect.Value)) error {
 		}
 	}
 	return nil
+}
+
+// nilOnPath returns true if the path of embedded fields v, a struct or a
+// pointer to one, gets the method name through (see methodPath) holds a nil
+// pointer or interface, the value a non-nil interface on it holds included.
+func nilOnPath(v reflect.Value, name string) bool {
+	if v.Kind() == reflect.Pointer {
+		if v.IsNil() {
+			return true
+		}
+		v = v.Elem()
+	}
+	pth, _ := methodPath(v.Type(), name, map[reflect.Type]bool{})
+	for _, i := range pth {
+		v = v.Field(i)
+		switch v.Kind() { //nolint:exhaustive
+		case reflect.Interface:
+			return v.IsNil() || nilOnPath(v.Elem(), name)
+
+		case reflect.Pointer:
+			if v.IsNil() {
+				return true
+			}
+			v = v.Elem()
+		}
+	}
+	return false
 }
 
 // setDst sets dst with the given values. It checks first if dst implements the
