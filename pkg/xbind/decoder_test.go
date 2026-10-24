@@ -1959,6 +1959,60 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, map[float64]string{0: "a"}, dst.M)
 	})
 
+	t.Run("error - negative zero array map key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			M map[[1]float64]string `url:"m"`
+		}{}
+		src := url.Values{"m[-0]": {"a"}, "m[0]": {"b"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "m[0]: invalid value: another key sets the value (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, map[[1]float64]string{{0}: "a"}, dst.M)
+	})
+
+	t.Run("error - negative zero struct map key", func(t *testing.T) {
+		// --- Given ---
+		type key struct{ F float64 }
+		dec := NewDecoder(WithDecFunc(func(s string) (key, error) {
+			f, err := strconv.ParseFloat(s, 64)
+			return key{f}, err
+		}))
+		dst := &struct {
+			M map[key]string `url:"m"`
+		}{}
+		src := url.Values{"m[-0]": {"a"}, "m[0]": {"b"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		want := "m[0]: invalid value: another key sets the value (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, map[key]string{{}: "a"}, dst.M)
+	})
+
+	t.Run("negative zero array key updates the entry", func(t *testing.T) {
+		// --- Given ---
+		neg := [1]float64{math.Copysign(0, -1)}
+		dst := &struct {
+			M map[[1]float64]string `url:"m"`
+		}{M: map[[1]float64]string{neg: "old"}}
+		src := url.Values{"m[0]": {"new"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[[1]float64]string{{0}: "new"}, dst.M)
+		assert.Len(t, 1, dst.M)
+	})
+
 	t.Run("error - map key not comparable", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(WithDecFunc(func(s string) (any, error) {
@@ -3342,6 +3396,8 @@ func Test_newState(t *testing.T) {
 	assert.Nil(t, have.log)
 	assert.NotNil(t, have.entries)
 	assert.Len(t, 0, have.entries)
+	assert.NotNil(t, have.keyed)
+	assert.Len(t, 0, have.keyed)
 	assert.NotNil(t, have.maps)
 	assert.Len(t, 0, have.maps)
 	assert.NotNil(t, have.failed)
@@ -3457,6 +3513,22 @@ func Test_state_entry(t *testing.T) {
 
 		// --- Then ---
 		assert.NotSame(t, ent.key.Interface(), have.key.Interface())
+	})
+
+	t.Run("negative zero composite key", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		m := reflect.ValueOf(map[[1]float64]int(nil))
+		neg := [1]float64{math.Copysign(0, -1)}
+		ent := stt.entry("m", m, reflect.ValueOf(neg), "-0", false)
+
+		// --- When ---
+		have := stt.entry("m", m, reflect.ValueOf([1]float64{0}), "0", false)
+
+		// --- Then ---
+		assert.Equal(t, ent.text, have.text)
+		assert.Equal(t, neg, have.key.Interface())
+		assert.Equal(t, "-0", have.text)
 	})
 }
 

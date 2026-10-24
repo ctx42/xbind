@@ -450,6 +450,7 @@ type state struct {
 	reset   map[string]bool        // Canonical paths of the reset containers.
 	log     []resetLog             // The resets and saves, in the order made.
 	entries map[string]mapEntry    // Map entries reached, by entry identity.
+	keyed   map[string][]string    // Entry ids of each map, in the order met.
 	maps    map[string]bool        // Canonical paths of the maps reached.
 	failed  map[string]bool        // Canonical paths of the values that failed.
 	set     map[string]bool        // Canonical paths of the values keys set.
@@ -481,6 +482,7 @@ func newState() *state {
 	return &state{
 		reset:   make(map[string]bool),
 		entries: make(map[string]mapEntry),
+		keyed:   make(map[string][]string),
 		maps:    make(map[string]bool),
 		failed:  make(map[string]bool),
 		set:     make(map[string]bool),
@@ -513,7 +515,9 @@ func (stt *state) level(typ reflect.Type, key string) level {
 // m that hold pointers, which no lookup by value finds, name their entries
 // too, the first time a key reaches m: a decoded key of the same type finds
 // such an entry, its value is updated in place, and its text comes from the
-// first src key naming it; keys there with one text name no entry.
+// first src key naming it; keys there with one text name no entry. A key Go
+// compares equal to one already reached names that entry even when its text
+// differs, so a float of -0 inside a struct or an array is the same key as 0.
 func (stt *state) entry(
 	pth string,
 	m reflect.Value,
@@ -535,11 +539,25 @@ func (stt *state) entry(
 				ent.key = reflect.Value{} // Keys with one text are ambiguous.
 			} else {
 				ent = mapEntry{key: mk, text: keyText(mk, "%v")}
+				stt.keyed[pth] = append(stt.keyed[pth], id)
 			}
 			stt.entries[id] = ent
 		}
 	}
 	id := pth + "[" + keyText(key, "%#v") + "]"
+	// Formatted text misses keys Go treats as equal, such as -0 and 0.
+	if key.IsValid() && !isNil(key) {
+		for _, alt := range stt.keyed[pth] {
+			prev := stt.entries[alt]
+			if !prev.key.IsValid() || prev.key.Type() != key.Type() {
+				continue
+			}
+			if prev.key.Equal(key) {
+				id = alt
+				break
+			}
+		}
+	}
 	ent, ok := stt.entries[id]
 	if ok && ent.named {
 		return ent
@@ -553,6 +571,9 @@ func (stt *state) entry(
 		if enc, err := encMapKey(key, nil); err == nil {
 			ent.text = enc
 		}
+	}
+	if !ok {
+		stt.keyed[pth] = append(stt.keyed[pth], id)
 	}
 	stt.entries[id] = ent
 	return ent
