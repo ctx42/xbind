@@ -808,6 +808,41 @@ func Test_baseType_tabular(t *testing.T) {
 	}
 }
 
+func Test_holdsLeaf_tabular(t *testing.T) {
+	leaf := func(typ reflect.Type) bool {
+		return typ == reflect.TypeFor[TBadRows]()
+	}
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"leaf", reflect.TypeFor[TBadRows](), true},
+		{"pointer to leaf", reflect.TypeFor[*TBadRows](), true},
+		{"slice of leaves", reflect.TypeFor[[]TBadRows](), true},
+		{
+			"map of pointers to leaves",
+			reflect.TypeFor[map[int]*TBadRows](),
+			true,
+		},
+		{"element of a leaf", reflect.TypeFor[[]TBadTag](), false},
+		{"value", reflect.TypeFor[int](), false},
+		{"recursive map", reflect.TypeFor[TRecMap](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := holdsLeaf(tc.typ, leaf)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_addressable(t *testing.T) {
 	// --- Given ---
 	m := reflect.ValueOf(map[string]int{"a": 1})

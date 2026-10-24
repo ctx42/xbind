@@ -439,6 +439,28 @@ func baseType(typ reflect.Type) reflect.Type {
 	return typ
 }
 
+// holdsLeaf returns true if leaf reports typ, or a type typ holds through
+// pointers, slices, arrays and maps; leaf gets only types that are not
+// pointers. For a type holding itself the walk ends at the first type met
+// twice.
+func holdsLeaf(typ reflect.Type, leaf func(reflect.Type) bool) bool {
+	seen := make(map[reflect.Type]bool)
+	for !seen[typ] {
+		seen[typ] = true
+		if typ.Kind() != reflect.Pointer && leaf(typ) {
+			return true
+		}
+		switch typ.Kind() { //nolint:exhaustive
+		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+			typ = typ.Elem()
+
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 // addressable returns an addressable copy of val.
 func addressable(val reflect.Value) reflect.Value {
 	cpy := reflect.New(val.Type()).Elem()

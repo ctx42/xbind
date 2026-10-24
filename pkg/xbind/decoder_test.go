@@ -1627,6 +1627,23 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, "ff", dst.C.Hex)
 	})
 
+	t.Run("tags inside containers of one-value types", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			L []TBadRows          `url:"l"`
+			M map[string]TBadRows `url:"m"`
+		}{}
+		src := url.Values{"l[0]": {"1"}, "m[a]": {"2"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 1, dst.L[0])
+		assert.Len(t, 2, dst.M["a"])
+	})
+
 	t.Run("error - malformed tag in nil nested struct", func(t *testing.T) {
 		// --- Given ---
 		src := url.Values{}

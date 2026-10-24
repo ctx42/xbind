@@ -42,6 +42,8 @@ var (
 	_ encoding.TextMarshaler   = TGenText[int]{}
 	_ encoding.TextUnmarshaler = (*TBadTagText)(nil)
 	_ encoding.TextMarshaler   = TBadTagText{}
+	_ encoding.TextUnmarshaler = (*TBadRows)(nil)
+	_ encoding.TextMarshaler   = TBadRows{}
 	_ zeroer                   = TOwnZero{}
 	_ zeroer                   = TReadZero{}
 	_ driver.Valuer            = TOwnValuer{}
@@ -463,6 +465,25 @@ func (tbt *TBadTagText) UnmarshalText(text []byte) error {
 
 func (tbt TBadTagText) MarshalText() ([]byte, error) {
 	return []byte(tbt.Hex), nil
+}
+
+// TBadTag has a url tag xbind rejects.
+type TBadTag struct {
+	X int `url:"x[]"`
+}
+
+// TBadRows is a slice of [TBadTag] decoded and encoded as one value, the
+// number of its elements.
+type TBadRows []TBadTag
+
+func (tbr *TBadRows) UnmarshalText(text []byte) error {
+	n, err := strconv.Atoi(string(text))
+	*tbr = make(TBadRows, n)
+	return err
+}
+
+func (tbr TBadRows) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(len(tbr))), nil
 }
 
 // TCycle embeds a pointer to itself, so a walk over embedded fields can loop.

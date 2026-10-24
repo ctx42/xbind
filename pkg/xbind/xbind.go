@@ -203,8 +203,9 @@ var (
 // every key counts, as mirror parses the tag as a whole. The key tag decides
 // which fields are ignored. Unexported fields, other than embedded ones, are
 // skipped, as [Decoder] and [Encoder] skip them, and so are the fields of a
-// struct that is not embedded and that leaf reports the caller decodes or
-// encodes as one value, as by its UnmarshalText method. The seen map holds
+// struct that is not embedded and that leaf reports, or that a type leaf
+// reports holds, the caller decodes or encodes as one value, as by its
+// UnmarshalText method. The seen map holds
 // the struct types checked so far, so a recursive type ends.
 func checkTags(
 	prefix string,
@@ -245,7 +246,7 @@ func checkTags(
 			const format = "%w: %s: name on embedded struct"
 			return xrr.Newf(format, ErrInvTag, pth, xrr.WithCode(ECInvTag))
 		}
-		if !fld.IsAnonymous() && (leaf(indirect(fld.Type())) || leaf(base)) {
+		if !fld.IsAnonymous() && holdsLeaf(fld.Type(), leaf) {
 			continue // The caller never reads its fields.
 		}
 		if err = checkTags(pth, base, key, leaf, seen); err != nil {

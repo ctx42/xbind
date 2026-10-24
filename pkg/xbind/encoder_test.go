@@ -1719,6 +1719,22 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.Equal(t, url.Values{"c": {"ff"}}, dst)
 	})
 
+	t.Run("tags inside containers of one-value types", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		s := &struct {
+			L []TBadRows          `url:"l"`
+			M map[string]TBadRows `url:"m"`
+		}{L: []TBadRows{make(TBadRows, 1)}, M: map[string]TBadRows{"a": {}}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, s)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"l": {"1"}, "m[a]": {"0"}}, dst)
+	})
+
 	t.Run("error - malformed struct tag", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
