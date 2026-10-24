@@ -2009,6 +2009,23 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.F.Time)
 	})
 
+	t.Run("error - failed unmarshaler keeps embeds nil", func(t *testing.T) {
+		// --- Given ---
+		type mid struct{ *TTextPtr }
+		type outer struct{ *mid }
+		dst := &struct {
+			F outer `url:"f"`
+		}{F: outer{&mid{}}}
+		src := url.Values{"f": {"GG"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		xrrtest.AssertFieldCnt(t, 1, err)
+		assert.Nil(t, dst.F.TTextPtr)
+	})
+
 	t.Run("error - map entry not written on error", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{Items: map[string]TItem{"a": {Size: 1}}}
@@ -3538,7 +3555,7 @@ func Test_useUnmarshal(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), "1")
+		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3554,7 +3571,7 @@ func Test_useUnmarshal(t *testing.T) {
 		dst = dst.Elem()
 
 		// --- When ---
-		have, err := useUnmarshal(dst, "1")
+		have, err := useUnmarshal(dst, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3572,7 +3589,7 @@ func Test_useUnmarshal(t *testing.T) {
 		dst = dst.Elem()
 
 		// --- When ---
-		have, err := useUnmarshal(dst, "1")
+		have, err := useUnmarshal(dst, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3586,7 +3603,7 @@ func Test_useUnmarshal(t *testing.T) {
 		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(dst, "2000-01-02T03:04:05+01:00")
+		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05+01:00")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3599,7 +3616,7 @@ func Test_useUnmarshal(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), "1", "2")
+		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), nil, "1", "2")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "require single value: received 2", err)
@@ -3613,7 +3630,7 @@ func Test_useUnmarshal(t *testing.T) {
 		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(dst, "2000-01-02T03:04:05Z")
+		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05Z")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3628,7 +3645,7 @@ func Test_useUnmarshal(t *testing.T) {
 		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(dst, "2000-01-02T03:04:05Z")
+		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05Z")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
@@ -3644,7 +3661,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3657,7 +3674,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3675,7 +3692,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "MarshalText")
+		err := allocPath(dst, "MarshalText", nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3690,7 +3707,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3703,7 +3720,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
@@ -3717,7 +3734,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3730,7 +3747,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrDecNotFound, err)
@@ -3742,7 +3759,7 @@ func Test_allocPath(t *testing.T) {
 		dst := reflect.ValueOf(s).Elem()
 
 		// --- When ---
-		err := allocPath(dst, "UnmarshalText")
+		err := allocPath(dst, "UnmarshalText", nil)
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrDecNotFound, err)
@@ -3755,7 +3772,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F int }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3768,7 +3785,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F byte }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "256")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "256")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -3784,7 +3801,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "7F")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "7F")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3797,7 +3814,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "GG")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "GG")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -3812,7 +3829,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F map[int]int }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3826,7 +3843,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F Alias }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3844,7 +3861,7 @@ func Test_setDst(t *testing.T) {
 		}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, "a", "b")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3862,7 +3879,7 @@ func Test_setDst(t *testing.T) {
 		}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, nil, "1")
 
 		// --- Then ---
 		want := "invalid type: expected decoder to return `int` got `string`"

@@ -120,8 +120,9 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // fields of a struct and the structs it embeds, a key names the field Go
 // promotion selects, as in [encoding/json]. Errors of the src values are
 // returned as [xrr.FieldErrors] keyed by the src keys; the other values are
-// still set, and a key with an error changes nothing.
-// The first key reaching a slice or an array replaces it: the values of one key
+// still set, and a key with an error changes nothing but what a failing
+// UnmarshalText method wrote through the pointers and maps its value holds. The
+// first key reaching a slice or an array replaces it: the values of one key
 // replace the elements, indexed keys fill a new slice whose gaps are zero
 // values, and array elements no key sets are zeroed; a field with no key keeps
 // its value. The src keys are applied in sorted order; a key reaching a value
@@ -574,7 +575,7 @@ func (dec *Decoder) apply(
 		}
 		ok := true
 		if err == nil {
-			ok, err = setDst(val, dec.reg, vls...)
+			ok, err = setDst(val, dec.reg, stt.save, vls...)
 		}
 		if !ok {
 			err = decNotFound(dst.Type())
@@ -859,8 +860,14 @@ func isUnmarshal(dst reflect.Value) bool {
 // useUnmarshal sets dst using its [encoding.TextUnmarshaler] implementation,
 // when it has one (see isUnmarshal), and returns true. Such a dst takes
 // exactly one value. The dst must not be a pointer. The nil pointers a struct
-// dst gets the method through are allocated first (see allocPath).
-func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
+// dst gets the method through are allocated first (see allocPath), each one
+// passed to a non-nil save before.
+func useUnmarshal(
+	dst reflect.Value,
+	save func(reflect.Value),
+	vls ...string,
+) (bool, error) {
+
 	if !isUnmarshal(dst) {
 		return false, nil
 	}
@@ -870,7 +877,7 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 	}
 	if dst.Kind() == reflect.Struct && hasNilEmbedded(dst, map[ptrKey]bool{}) {
 		// The method may be promoted through a nil embedded pointer.
-		if err = allocPath(dst, "UnmarshalText"); err != nil {
+		if err = allocPath(dst, "UnmarshalText", save); err != nil {
 			return true, err
 		}
 	}
@@ -884,8 +891,9 @@ func useUnmarshal(dst reflect.Value, vls ...string) (bool, error) {
 // the struct pointer it holds. A nil pointer on the path that cannot be set,
 // an embedded pointer to an unexported type, returns [ErrUnexported], and a
 // nil interface, or one holding a value whose method would be reached through
-// a nil embedded field, returns an error wrapping [ErrDecNotFound].
-func allocPath(dst reflect.Value, name string) error {
+// a nil embedded field, returns an error wrapping [ErrDecNotFound]. A non-nil
+// save gets each nil pointer before it is allocated.
+func allocPath(dst reflect.Value, name string, save func(reflect.Value)) error {
 	pth, _ := methodPath(dst.Type(), name, map[reflect.Type]bool{})
 	val := dst
 	for _, i := range pth {
@@ -900,7 +908,7 @@ func allocPath(dst reflect.Value, name string) error {
 			if held.Kind() == reflect.Pointer && !held.IsNil() &&
 				held.Elem().Kind() == reflect.Struct {
 
-				return allocPath(held.Elem(), name)
+				return allocPath(held.Elem(), name, save)
 			}
 			// Nothing can be allocated in a value the interface holds.
 			sub, _ := methodPath(held.Type(), name, map[reflect.Type]bool{})
@@ -916,6 +924,9 @@ func allocPath(dst reflect.Value, name string) error {
 				if !val.CanSet() {
 					return ErrUnexported
 				}
+				if save != nil {
+					save(val)
+				}
 				val.Set(reflect.New(val.Type().Elem()))
 			}
 			val = val.Elem()
@@ -929,14 +940,20 @@ func allocPath(dst reflect.Value, name string) error {
 // registry, then it decodes a slice or an array element by element. If one of
 // them was used, it returns true and the error returned by it. If none can
 // decode the value, it returns false with a nil error. Nil pointers are
-// allocated, as deref does, before dst is set.
-func setDst(dst reflect.Value, reg decReg, vls ...string) (bool, error) {
-	dst, err := deref(dst, nil)
+// allocated, as deref does with save, before dst is set.
+func setDst(
+	dst reflect.Value,
+	reg decReg,
+	save func(reflect.Value),
+	vls ...string,
+) (bool, error) {
+
+	dst, err := deref(dst, save)
 	if err != nil {
 		return true, err
 	}
 	if reg[dst.Type()] == nil {
-		if ok, err := useUnmarshal(dst, vls...); ok {
+		if ok, err := useUnmarshal(dst, save, vls...); ok {
 			return true, err
 		}
 	}
@@ -992,7 +1009,7 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 
 	for i, val := range vls {
 		ne := reflect.New(indirect(et))
-		ok, err := setDst(ne.Elem(), reg, val)
+		ok, err := setDst(ne.Elem(), reg, nil, val)
 		if err != nil {
 			return err
 		}
@@ -1016,7 +1033,7 @@ func setSliceOrArray(dst reflect.Value, reg decReg, vls ...string) error {
 // is returned as 0, the same key in a map.
 func decKey(kt reflect.Type, reg decReg, key string) (reflect.Value, error) {
 	nk := reflect.New(indirect(kt))
-	ok, err := setDst(nk.Elem(), reg, key)
+	ok, err := setDst(nk.Elem(), reg, nil, key)
 	if !ok {
 		return reflect.Value{}, decNotFound(kt)
 	}
