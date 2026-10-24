@@ -496,8 +496,11 @@ func (stt *state) entry(
 		ent.key = key
 	}
 	ent.text, ent.named = txt, true
-	if enc, err := encMapKey(key, nil); err == nil && !keep {
-		ent.text = enc
+	// A nil interface key, which a decoder may return, has no encoding.
+	if !isNil(key) && !keep {
+		if enc, err := encMapKey(key, nil); err == nil {
+			ent.text = enc
+		}
 	}
 	stt.entries[id] = ent
 	return ent

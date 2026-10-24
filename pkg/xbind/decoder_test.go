@@ -1729,6 +1729,27 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Nil(t, dst.M)
 	})
 
+	t.Run("nil interface map key", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(s string) (any, error) {
+			if s == "nil" {
+				return nil, nil
+			}
+			return s, nil
+		}))
+		dst := &struct {
+			M map[any]int `url:"m"`
+		}{}
+		src := url.Values{"m[nil]": {"1"}, "m[a]": {"2"}}
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[any]int{nil: 1, "a": 2}, dst.M)
+	})
+
 	t.Run("map keys printing alike", func(t *testing.T) {
 		// --- Given ---
 		type key struct{ A, B string }
