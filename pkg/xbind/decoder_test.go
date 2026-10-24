@@ -2510,6 +2510,40 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, map[string]string{"a.b.c.d": "x"}, dst.Attr)
 	})
 
+	t.Run("error - failed array resets spend the budget", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			A [1000]int `url:"a"`
+		}{}
+		src := url.Values{"a[00]": {"x"}, "a[0]": {"x"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(10)).Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"a[00]: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"a[0]: invalid value: index 0 resets too many elements (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("array reset by a successful key is free", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			A [2000]int `url:"a"`
+			L []int     `url:"l"`
+		}{}
+		src := url.Values{"a[5]": {"1"}, "l[10]": {"2"}}
+
+		// --- When ---
+		err := NewDecoder(WithDecMaxIndex(10)).Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 1, dst.A[5])
+		assert.Equal(t, 2, dst.L[10])
+	})
+
 	t.Run("error - index limit option", func(t *testing.T) {
 		// --- Given ---
 		dst := &TBox{}
@@ -3483,22 +3517,58 @@ func Test_state_markReached(t *testing.T) {
 }
 
 func Test_state_undo(t *testing.T) {
-	// --- Given ---
-	s := []int{1, 2}
+	t.Run("sets the values back", func(t *testing.T) {
+		// --- Given ---
+		s := []int{1, 2}
 
-	stt := newState()
-	stt.markReset("a", reflect.Value{})
-	stt.markReset("b", reflect.ValueOf(&s).Elem())
-	stt.markReset("c", reflect.Value{})
+		stt := newState()
+		stt.markReset("a", reflect.Value{})
+		stt.markReset("b", reflect.ValueOf(&s).Elem())
+		stt.markReset("c", reflect.Value{})
 
-	// --- When ---
-	stt.undo(1)
+		// --- When ---
+		stt.undo(1)
 
-	// --- Then ---
-	assert.Equal(t, map[string]bool{"a": true}, stt.reset)
-	assert.Len(t, 1, stt.log)
-	assert.Equal(t, "a", stt.log[0].pth)
-	assert.Equal(t, []int{1, 2}, s)
+		// --- Then ---
+		assert.Equal(t, map[string]bool{"a": true}, stt.reset)
+		assert.Len(t, 1, stt.log)
+		assert.Equal(t, "a", stt.log[0].pth)
+		assert.Equal(t, []int{1, 2}, s)
+	})
+
+	t.Run("charges array resets to the budget", func(t *testing.T) {
+		// --- Given ---
+		arr := [3]int{1, 2, 3}
+		s := []int{1}
+
+		stt := newState()
+		stt.budget = 10
+		stt.markReset("a", reflect.ValueOf(&arr).Elem())
+		stt.markReset("s", reflect.ValueOf(&s).Elem())
+
+		// --- When ---
+		stt.undo(0)
+
+		// --- Then ---
+		assert.Equal(t, 7, stt.budget)
+		assert.Equal(t, [3]int{1, 2, 3}, arr)
+		assert.Equal(t, []int{1}, s)
+	})
+
+	t.Run("budget does not go below zero", func(t *testing.T) {
+		// --- Given ---
+		arr := [3]int{1, 2, 3}
+
+		stt := newState()
+		stt.budget = 2
+		stt.markReset("a", reflect.ValueOf(&arr).Elem())
+
+		// --- When ---
+		stt.undo(0)
+
+		// --- Then ---
+		assert.Equal(t, 0, stt.budget)
+	})
 }
 
 func Test_Decoder_apply(t *testing.T) {

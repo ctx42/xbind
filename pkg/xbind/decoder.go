@@ -129,37 +129,39 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // [WithDecMaxIndex] sets, is an [ErrInvValue] field error, and so is an index
 // adding more slice elements, gaps included, than the indexed keys of one call
 // may add, the keys that fail included: as many as the limit plus one, and one
-// more per src key. Among the fields of a struct and the structs it embeds, a
-// key names the field Go promotion selects, as in [encoding/json]. Errors of
-// the src values are returned as [xrr.FieldErrors] keyed by the src keys; the
-// other values are still set, and a key with an error changes nothing but what
-// a failing UnmarshalText method wrote through the pointers and maps its value
-// holds. The first key reaching a slice or an array replaces it: the values of
-// one key replace the elements, indexed keys fill a new slice whose gaps are
-// zero values, and array elements no key sets are zeroed; a field with no key
-// keeps its value. The src keys are applied in sorted order; a key reaching a
-// value another key sets, or one key setting the values of a slice or array
-// other keys index, is an [ErrInvValue] field error on the later key.
-// Conflicts, and the replacing of slices and arrays, follow the paths of the
-// keys, so a value a prefilled dst shares under two paths, through two pointers
-// to it, is reached as two values, in the sorted key order. Keys are added to
-// an existing map, and the values of a map are updated in place; keys decoding
-// to equal values name one entry, and a key that is or holds a NaN is an
-// [ErrInvValue] field error. A nil pointer to a nested struct is allocated only
-// when a src key leads into it. A field with the "required" option is an
-// [ErrRequired] error when it is empty after decoding: a zero number, an empty
-// string, slice or map, a nil pointer or a pointer to an empty value, or a zero
-// struct; a bool is never empty. A field with the "present" option is an
-// [ErrMissing] error when no src key reaches it, whatever value the key gives,
-// a zero one included; it is checked in dst and in the structs src keys reach.
-// The required fields of a nil struct pointer, an absent struct, are not
-// checked; those of the structs in maps, slices and arrays are, under paths
-// like "items[k].name". A src key leading into an embedded nil pointer to a
-// struct, which the decoder cannot allocate because the field is unexported, is
-// an [ErrUnexported] field error. A struct tag of dst that does not parse, or
-// that names a field with a bracket ("ids[]") or an embedded struct, is an
-// [ErrInvTag] error; the tags inside a type decoded as one value, as by its
-// UnmarshalText method, are not checked. A key taking more steps than
+// more per src key. A key that fails after resetting an array spends the length
+// of the array from that budget, and once the budget is spent, a key that would
+// reset an array is an [ErrInvValue] field error. Among the fields of a struct
+// and the structs it embeds, a key names the field Go promotion selects, as in
+// [encoding/json]. Errors of the src values are returned as [xrr.FieldErrors]
+// keyed by the src keys; the other values are still set, and a key with an
+// error changes nothing but what a failing UnmarshalText method wrote through
+// the pointers and maps its value holds. The first key reaching a slice or an
+// array replaces it: the values of one key replace the elements, indexed keys
+// fill a new slice whose gaps are zero values, and array elements no key sets
+// are zeroed; a field with no key keeps its value. The src keys are applied in
+// sorted order; a key reaching a value another key sets, or one key setting the
+// values of a slice or array other keys index, is an [ErrInvValue] field error
+// on the later key. Conflicts, and the replacing of slices and arrays, follow
+// the paths of the keys, so a value a prefilled dst shares under two paths,
+// through two pointers to it, is reached as two values, in the sorted key
+// order. Keys are added to an existing map, and the values of a map are updated
+// in place; keys decoding to equal values name one entry, and a key that is or
+// holds a NaN is an [ErrInvValue] field error. A nil pointer to a nested struct
+// is allocated only when a src key leads into it. A field with the "required"
+// option is an [ErrRequired] error when it is empty after decoding: a zero
+// number, an empty string, slice or map, a nil pointer or a pointer to an empty
+// value, or a zero struct; a bool is never empty. A field with the "present"
+// option is an [ErrMissing] error when no src key reaches it, whatever value
+// the key gives, a zero one included; it is checked in dst and in the structs
+// src keys reach. The required fields of a nil struct pointer, an absent
+// struct, are not checked; those of the structs in maps, slices and arrays are,
+// under paths like "items[k].name". A src key leading into an embedded nil
+// pointer to a struct, which the decoder cannot allocate because the field is
+// unexported, is an [ErrUnexported] field error. A struct tag of dst that does
+// not parse, or that names a field with a bracket ("ids[]") or an embedded
+// struct, is an [ErrInvTag] error; the tags inside a type decoded as one value,
+// as by its UnmarshalText method, are not checked. A key taking more steps than
 // [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an [ErrInvValue]
 // field error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
@@ -596,12 +598,17 @@ func (stt *state) markReached(steps []step) {
 }
 
 // undo forgets the resets made since the log held n entries, and sets back
-// the values they zeroed or saved, latest first.
+// the values they zeroed or saved, latest first. The elements of an array a
+// reset zeroed are charged to the element budget, so keys that fail cannot
+// copy arrays without end.
 func (stt *state) undo(n int) {
 	for i := len(stt.log) - 1; i >= n; i-- {
 		ent := stt.log[i]
 		if !ent.saved {
 			delete(stt.reset, ent.pth)
+			if ent.val.Kind() == reflect.Array {
+				stt.budget = max(stt.budget-ent.val.Len(), 0)
+			}
 		}
 		if ent.val.IsValid() {
 			ent.val.Set(ent.old)
@@ -709,6 +716,12 @@ func (dec *Decoder) apply(
 	default:
 		if stt.set[pth] {
 			return keyConflict()
+		}
+		if dst.Kind() == reflect.Array && !stt.reset[pth] && stt.budget == 0 {
+			// Keys that failed spent the budget resetting arrays.
+			const format = "%w: index %d resets too many elements"
+			code := xrr.WithCode(ECInvValue)
+			return xrr.Newf(format, ErrInvValue, stp.pos, code)
 		}
 		stt.indexed[pth] = true
 		stt.markReset(pth, dst)

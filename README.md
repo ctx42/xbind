@@ -109,9 +109,10 @@ checked. The decoder also reads `attr.color` for a map of values, taking the
 rest of the key as the map key, and `items.0.name` for an index. An index above
 1000 is an error unless `WithDecMaxIndex` sets another limit, and the indexed
 keys of one request, failing ones included, may add, gaps included, as many
-elements as that limit plus one, and one more per key. The first key reaching a
-slice replaces it, indexed keys fill it whatever their order, and keys are added
-to an existing map.
+elements as that limit plus one, and one more per key. A failing key that reset
+an array spends its length from that budget too. The first key reaching a slice
+replaces it, indexed keys fill it whatever their order, and keys are added to an
+existing map.
 
 A key takes one step per struct field, map key or index, and the rest of a key
 a map of values takes as its key is one step. A key taking more than 32 steps is
