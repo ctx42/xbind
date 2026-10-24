@@ -139,11 +139,14 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // zero values, and array elements no key sets are zeroed; a field with no key
 // keeps its value. The src keys are applied in sorted order; a key reaching a
 // value another key sets, or one key setting the values of a slice or array
-// other keys index, is an [ErrInvValue] field error on the later key. Keys are
-// added to an existing map, and the values of a map are updated in place; keys
-// decoding to equal values name one entry, and a key that is or holds a NaN is
-// an [ErrInvValue] field error. A nil pointer to a nested struct is allocated
-// only when a src key leads into it. A field with the "required" option is an
+// other keys index, is an [ErrInvValue] field error on the later key.
+// Conflicts, and the replacing of slices and arrays, follow the paths of the
+// keys, so a value a prefilled dst shares under two paths, through two pointers
+// to it, is reached as two values, in the sorted key order. Keys are added to
+// an existing map, and the values of a map are updated in place; keys decoding
+// to equal values name one entry, and a key that is or holds a NaN is an
+// [ErrInvValue] field error. A nil pointer to a nested struct is allocated only
+// when a src key leads into it. A field with the "required" option is an
 // [ErrRequired] error when it is empty after decoding: a zero number, an empty
 // string, slice or map, a nil pointer or a pointer to an empty value, or a zero
 // struct; a bool is never empty. A field with the "present" option is an
