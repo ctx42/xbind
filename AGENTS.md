@@ -80,6 +80,8 @@ All source is in `pkg/xbind/`.
   fields of a nil one are not checked for `required`.
 - `TextMarshaler` and `WithEncFunc` functions apply only to values with a
   key; the src struct and the structs it embeds are encoded field by field.
+  `TextMarshaler` is used only when the type also implements
+  `TextUnmarshaler`.
 - Errors are xrr sentinels matched with `errors.Is`; each code's value equals
   its const name.
 

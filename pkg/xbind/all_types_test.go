@@ -40,6 +40,9 @@ var (
 	_ encoding.TextUnmarshaler = (*TLevel)(nil)
 	_ encoding.TextMarshaler   = TFltKey{}
 	_ encoding.TextMarshaler   = TGenText[int]{}
+	_ encoding.TextMarshaler   = tIDText("")
+	_ encoding.TextMarshaler   = tHexText(0)
+	_ encoding.TextMarshaler   = tSumText{}
 	_ encoding.TextUnmarshaler = (*TBadTagText)(nil)
 	_ encoding.TextMarshaler   = TBadTagText{}
 	_ encoding.TextUnmarshaler = (*TBadRows)(nil)
@@ -567,6 +570,32 @@ func (tdu TDual) MarshalText() ([]byte, error) { return []byte(tdu), nil }
 func (tdu TDual) MarshalValues(dst url.Values, prefix string) error {
 	dst.Add(prefix+".v", string(tdu))
 	return nil
+}
+
+// tIDText is a named string. MarshalText adds a prefix and there is no
+// UnmarshalText, so Encode writes the string itself.
+type tIDText string
+
+func (tid tIDText) MarshalText() ([]byte, error) {
+	return []byte("id:" + string(tid)), nil
+}
+
+// tHexText is a named int. MarshalText writes hex and there is no
+// UnmarshalText, so Encode writes the decimal text.
+type tHexText int
+
+func (thx tHexText) MarshalText() ([]byte, error) {
+	return []byte(strconv.FormatInt(int64(thx), 16)), nil
+}
+
+// tSumText is a struct. MarshalText writes N and there is no UnmarshalText,
+// so Encode writes the fields.
+type tSumText struct {
+	N int `url:"n"`
+}
+
+func (tsu tSumText) MarshalText() ([]byte, error) {
+	return []byte(strconv.Itoa(tsu.N)), nil
 }
 
 // TFltKey is a map key type holding a float, encoded as the float text.

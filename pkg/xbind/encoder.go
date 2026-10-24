@@ -98,7 +98,10 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // implemented by src, or by a struct embedded in it, encodes the whole struct;
 // [encoding.TextMarshaler] and functions registered with [WithEncFunc] apply
 // only to values with a key, so src and the structs embedded in it are encoded
-// field by field. A field, slice or array element, or map value of a type with
+// field by field. [encoding.TextMarshaler] is used when the type, or a pointer
+// to it, also implements [encoding.TextUnmarshaler]; otherwise the built-in
+// encoder or the fields are used, so the text decodes back to the same value.
+// A field, slice or array element, or map value of a type with
 // no encoder, such as a func, a chan, an interface other than [Marshaler] and
 // [encoding.TextMarshaler] or a pointer to a pointer to a struct, is an
 // [ErrEncNotFound] error, even when nil. Any other nil pointer or interface
@@ -306,8 +309,9 @@ type ptrKey struct {
 // when it returns false, the error is always nil.
 //
 // It first checks for an encoder registered for the src type, then if src, or
-// its address, implements [Marshaler], then [encoding.TextMarshaler]; lastly,
-// it calls encFor to find an encoder. For an inline src, the struct passed to
+// its address, implements [Marshaler], then [encoding.TextMarshaler] when the
+// type also implements [encoding.TextUnmarshaler]; lastly, it calls encFor to
+// find an encoder. For an inline src, the struct passed to
 // [Encoder.Encode] or a struct embedded in a struct, only [Marshaler] is
 // used. A nil pointer or interface with an encoder, or a value whose
 // marshaler method would be reached through a nil embedded field (see
@@ -355,7 +359,12 @@ func encSrc(
 	}
 	efn := reg.lookup(typ)
 	// The methods of a value read from an unexported field cannot be called.
-	if efn == nil && isMarshaler(typ) && src.CanInterface() {
+	// MarshalText is used only when Decode can read that text back. A nil
+	// marshaler still adds nothing.
+	paired := typ.Implements(iMarshaler) || textUnmarshaler(typ)
+	if efn == nil && isMarshaler(typ) && src.CanInterface() &&
+		(isNil(src) || paired) {
+
 		name := "MarshalText"
 		if typ.Implements(iMarshaler) {
 			name = "MarshalValues"
@@ -396,6 +405,16 @@ func encSrc(
 // [encoding.TextMarshaler].
 func isMarshaler(typ reflect.Type) bool {
 	return typ.Implements(iMarshaler) || typ.Implements(iTextMarshaler)
+}
+
+// textUnmarshaler reports whether typ, or a pointer to the type it is or
+// points to, implements [encoding.TextUnmarshaler].
+func textUnmarshaler(typ reflect.Type) bool {
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return typ.Implements(iUnmarshaler) ||
+		reflect.PointerTo(typ).Implements(iUnmarshaler)
 }
 
 // encodeSlice encodes the src slice or array to dst. Elements encoded as one
@@ -539,7 +558,9 @@ func (enc *Encoder) elemLevel(typ reflect.Type, est *encState) level {
 
 // isValueType returns true if a value of the typ type, or a pointer to one,
 // is encoded as one text value: by a registered encoder, by its
-// [encoding.TextMarshaler], or by a built-in encoder. A [Marshaler] is not.
+// [encoding.TextMarshaler] when it also implements [encoding.TextUnmarshaler],
+// or by a built-in encoder. A [Marshaler] is not. An interface implementing
+// [encoding.TextMarshaler] is one; the value it holds decides.
 func (enc *Encoder) isValueType(typ reflect.Type) bool {
 	if enc.reg.lookup(typ) != nil {
 		return true // Registered for typ or for the type it points to.
@@ -550,17 +571,24 @@ func (enc *Encoder) isValueType(typ reflect.Type) bool {
 		return false
 	}
 	if typ.Implements(iTextMarshaler) || ptr.Implements(iTextMarshaler) {
-		return true
+		if typ.Kind() == reflect.Interface || textUnmarshaler(typ) {
+			return true
+		}
 	}
 	return encFor(typ, enc.reg) != nil
 }
 
 // isLeafType returns true if a value of the typ type, which is not a pointer,
 // is encoded as a whole: by a registered encoder, by its [Marshaler] or
-// [encoding.TextMarshaler], or by a built-in encoder.
+// [encoding.TextMarshaler] when it also implements [encoding.TextUnmarshaler],
+// or by a built-in encoder.
 func (enc *Encoder) isLeafType(typ reflect.Type) bool {
-	return isMarshaler(typ) || isMarshaler(reflect.PointerTo(typ)) ||
-		enc.isValueType(typ)
+	if typ.Implements(iMarshaler) ||
+		reflect.PointerTo(typ).Implements(iMarshaler) {
+
+		return true
+	}
+	return enc.isValueType(typ)
 }
 
 // errNilKey reports a map key whose MarshalText method would be reached

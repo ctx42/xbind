@@ -1969,6 +1969,69 @@ func Test_Encoder_Encode(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, url.Values{"s": {"a"}}, dst)
 	})
+
+	t.Run("named string with only MarshalText", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := &struct {
+			S tIDText `url:"s"`
+		}{S: "abc"}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"s": {"abc"}}, dst)
+
+		back := &struct {
+			S tIDText `url:"s"`
+		}{}
+		assert.NoError(t, NewDecoder().Decode(back, dst))
+		assert.Equal(t, src, back)
+	})
+
+	t.Run("named int with only MarshalText", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := &struct {
+			N tHexText `url:"n"`
+		}{N: 255}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"n": {"255"}}, dst)
+
+		back := &struct {
+			N tHexText `url:"n"`
+		}{}
+		assert.NoError(t, NewDecoder().Decode(back, dst))
+		assert.Equal(t, src, back)
+	})
+
+	t.Run("struct with only MarshalText", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := &struct {
+			F tSumText `url:"f"`
+		}{F: tSumText{N: 7}}
+
+		// --- When ---
+		err := NewEncoder().Encode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"f.n": {"7"}}, dst)
+
+		back := &struct {
+			F tSumText `url:"f"`
+		}{}
+		assert.NoError(t, NewDecoder().Decode(back, dst))
+		assert.Equal(t, src, back)
+	})
 }
 
 func Fuzz_Encoder_Encode(f *testing.F) {
@@ -2221,7 +2284,7 @@ func Test_encSrc(t *testing.T) {
 	t.Run("error - MarshalText", func(t *testing.T) {
 		// --- Given ---
 		dst := url.Values{}
-		s := &struct{ F *TTextVal }{F: new(TTextVal(0))}
+		s := &struct{ F *TTextPtr }{F: new(TTextPtr(0))}
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
@@ -2311,10 +2374,10 @@ func Test_encSrc_tabular(t *testing.T) {
 			"F=A",
 		},
 		{
-			"TextMarshaler value receiver",
+			"named byte with only MarshalText",
 			&struct{ F TTextVal }{F: TTextVal(65)},
 			"F",
-			"F=A",
+			"F=65",
 		},
 		{
 			"Marshaler pointer receiver",
@@ -2377,6 +2440,35 @@ func Test_isMarshaler_tabular(t *testing.T) {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
 			have := isMarshaler(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_textUnmarshaler_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"named byte", reflect.TypeFor[TTextVal](), false},
+		{"pointer to named byte", reflect.TypeFor[*TTextVal](), false},
+		{"level", reflect.TypeFor[TLevel](), true},
+		{"pointer to level", reflect.TypeFor[*TLevel](), true},
+		{"text pointer", reflect.TypeFor[TTextPtr](), true},
+		{"float key", reflect.TypeFor[TFltKey](), false},
+		{"named string", reflect.TypeFor[tIDText](), false},
+		{"struct", reflect.TypeFor[tSumText](), false},
+		{"int", reflect.TypeFor[int](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := textUnmarshaler(tc.typ)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
@@ -2507,7 +2599,7 @@ func Test_Encoder_encodeSlice_tabular(t *testing.T) {
 				F: []encoding.TextMarshaler{TDual("a"), TTextVal('b')},
 			},
 			"F",
-			"F=b&F%5B0%5D.v=a",
+			"F=98&F%5B0%5D.v=a",
 		},
 	}
 
@@ -2958,6 +3050,7 @@ func Test_Encoder_isValueType_tabular(t *testing.T) {
 		{"marshaler", reflect.TypeFor[TMarValVal](), false},
 		{"pointer receiver marshaler", reflect.TypeFor[TMarValPtr](), false},
 		{"text marshaler", reflect.TypeFor[TTextVal](), true},
+		{"marshal text only", reflect.TypeFor[TFltKey](), false},
 		{"pointer receiver text marshaler", reflect.TypeFor[TTextPtr](), true},
 		{"base type", reflect.TypeFor[int](), true},
 		{"struct", reflect.TypeFor[TItem](), false},
@@ -2986,6 +3079,7 @@ func Test_Encoder_isLeafType_tabular(t *testing.T) {
 		{"marshaler", reflect.TypeFor[TMarValVal](), true},
 		{"pointer receiver marshaler", reflect.TypeFor[TMarValPtr](), true},
 		{"text marshaler", reflect.TypeFor[TTextVal](), true},
+		{"marshal text only", reflect.TypeFor[TFltKey](), false},
 		{"time", reflect.TypeFor[time.Time](), true},
 		{"base type", reflect.TypeFor[int](), true},
 		{"struct", reflect.TypeFor[TItem](), false},

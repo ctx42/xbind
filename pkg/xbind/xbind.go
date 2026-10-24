@@ -23,8 +23,8 @@
 // and arrays of structs, and any nesting of them, are supported. The value
 // types are bool, string, the int, uint (except uintptr) and float kinds,
 // their named variants, [time.Time] (RFC 3339), [time.Duration], and types
-// implementing [encoding.TextUnmarshaler] / [encoding.TextMarshaler] or
-// [Marshaler].
+// implementing [encoding.TextUnmarshaler], [encoding.TextMarshaler] when the
+// type also unmarshals text, or [Marshaler].
 //
 // [UnmarshalJSON], [UnmarshalJSONReader] and [UnmarshalJSONBody] decode JSON
 // bodies strictly (unknown fields and trailing data are errors) and translate

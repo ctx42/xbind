@@ -223,9 +223,11 @@ in a slice of plain values moves the values after it up one place.
 ### Custom types
 
 A field whose type implements `encoding.TextUnmarshaler` is decoded from a
-single value with `UnmarshalText`; one implementing `encoding.TextMarshaler` is
-encoded with `MarshalText`. A type that needs more than one key implements
-`Marshaler` and adds its own values under the given prefix:
+single value with `UnmarshalText`. A field that also implements
+`encoding.TextMarshaler` is encoded with `MarshalText`. A type that implements
+only `MarshalText` is encoded by the built-in encoder, or field by field, so
+the text decodes back to the same value. A type that needs more than one key
+implements `Marshaler` and adds its own values under the given prefix:
 
 ```go
 type Marshaler interface {
