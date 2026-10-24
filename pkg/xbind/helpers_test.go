@@ -265,12 +265,6 @@ func Test_isZero_tabular(t *testing.T) {
 		{"IsZero implementor", time.Time{}, true},
 		{"IsZero implementor non-zero", time.Now(), false},
 		{"IsZero method wins", time.Time{}.In(waw), true},
-		{
-			"own IsZero with a nil embed",
-			TOwnZero{Stringer: (*time.Duration)(nil)},
-			true,
-		},
-		{"own IsZero with a nil embed set", TOwnZero{Set: true}, false},
 		{"array of empty slices", [1][]int{{}}, true},
 		{"struct with empty slice", struct{ S []int }{[]int{}}, true},
 
@@ -592,11 +586,6 @@ func Test_isEmpty_tabular(t *testing.T) {
 			"embedded IsZero",
 			reflect.ValueOf(TPromZero{new(time.Unix(1, 0))}),
 			false,
-		},
-		{
-			"own IsZero with a nil embed",
-			reflect.ValueOf(TOwnZero{Stringer: (*time.Duration)(nil)}),
-			true,
 		},
 		{"empty Valuer", reflect.ValueOf(TValuer("")), true},
 		{"Valuer", reflect.ValueOf(TValuer("a")), false},

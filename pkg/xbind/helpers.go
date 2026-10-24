@@ -93,8 +93,7 @@ type zeroer interface{ IsZero() bool }
 // A struct implementing the IsZero method, on its value or on its address
 // when v is addressable, is zero when the method says so; other structs,
 // structs read through unexported fields, structs embedding a nil pointer or
-// interface and not declaring the method themselves, and arrays are zero when
-// all their elements are.
+// interface, and arrays are zero when all their elements are.
 func isZero(v reflect.Value) bool {
 	switch v.Kind() { //nolint:exhaustive
 	case reflect.Map, reflect.Slice:
@@ -109,8 +108,7 @@ func isZero(v reflect.Value) bool {
 		return true
 
 	case reflect.Struct:
-		nilEmb := hasNilEmbedded(v, map[ptrKey]bool{})
-		if nilEmb && !declares(v.Type(), "IsZero") {
+		if hasNilEmbedded(v, map[ptrKey]bool{}) {
 			// A method promoted through a nil pointer or interface would panic.
 			return isZeroFields(v)
 		}
@@ -286,9 +284,8 @@ func declares(typ reflect.Type, name string) bool {
 // A bool is never empty. The rules are those of IsEmpty in the
 // github.com/ctx42/verax package. Methods are called only when v can be
 // interfaced, and not on a struct embedding a nil pointer or interface, or a
-// pointer or interface to one, whose promoted methods would panic, unless the
-// struct declares the method itself; such a struct is empty when all its
-// fields are zero. A chain of pointers and
+// pointer or interface to one, whose promoted methods would panic; such a
+// struct is empty when all its fields are zero. A chain of pointers and
 // interfaces leading back to itself is not empty.
 func isEmpty(v reflect.Value) bool {
 	if !v.IsValid() {
@@ -321,13 +318,11 @@ func isEmpty(v reflect.Value) bool {
 	}
 	nilEmb := base.Kind() == reflect.Struct &&
 		hasNilEmbedded(base, map[ptrKey]bool{})
-	if v.CanInterface() {
-		zer, ok := v.Interface().(zeroer)
-		if ok && (!nilEmb || declares(base.Type(), "IsZero")) {
+	if v.CanInterface() && !nilEmb {
+		if zer, ok := v.Interface().(zeroer); ok {
 			return zer.IsZero()
 		}
-		vlr, ok := v.Interface().(driver.Valuer)
-		if ok && (!nilEmb || declares(base.Type(), "Value")) {
+		if vlr, ok := v.Interface().(driver.Valuer); ok {
 			val, err := vlr.Value()
 			rv := reflect.ValueOf(val)
 			// A value of its own type would be checked forever.
