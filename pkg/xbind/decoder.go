@@ -466,11 +466,11 @@ func (stt *state) level(typ reflect.Type, key string) level {
 // pointer keys and keys holding pointers find it again, and its text is the
 // encoded text or, when the key type has no encoder or keep is true, the src
 // text of the first key. Pass keep for a key type with a registered decoder,
-// whose src text may differ from the encoded one. The pointer keys already in
-// the map m, which no lookup by value finds, name their entries too, the first
-// time a key reaches m, so the value of such an entry is updated in place and
-// its text comes from the first src key naming it; pointer keys there with one
-// text name no entry.
+// whose src text may differ from the encoded one. The keys already in the map
+// m that hold pointers, which no lookup by value finds, name their entries
+// too, the first time a key reaches m: a decoded key of the same type finds
+// such an entry, its value is updated in place, and its text comes from the
+// first src key naming it; keys there with one text name no entry.
 func (stt *state) entry(
 	pth string,
 	m reflect.Value,
@@ -483,7 +483,7 @@ func (stt *state) entry(
 		stt.maps[pth] = true
 		for it := m.MapRange(); it.Next(); {
 			mk := it.Key()
-			if !isPtrKey(mk) {
+			if !holdsPtr(dynType(mk)) {
 				continue
 			}
 			id := pth + "[" + keyText(mk, "%#v") + "]"
@@ -501,7 +501,7 @@ func (stt *state) entry(
 	if ok && ent.named {
 		return ent
 	}
-	if !ok || !ent.key.IsValid() || !isPtrKey(key) {
+	if !ok || !ent.key.IsValid() || dynType(ent.key) != dynType(key) {
 		ent.key = key
 	}
 	ent.text, ent.named = txt, true

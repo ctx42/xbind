@@ -180,28 +180,54 @@ func Test_isNaNKey_tabular(t *testing.T) {
 	}
 }
 
-func Test_isPtrKey_tabular(t *testing.T) {
-	ptrItf := reflect.ValueOf(map[any]int{new(1): 1}).MapKeys()[0]
+func Test_dynType_tabular(t *testing.T) {
 	valItf := reflect.ValueOf(map[any]int{1: 1}).MapKeys()[0]
 	nilItf := reflect.ValueOf(map[any]int{nil: 1}).MapKeys()[0]
 
 	tt := []struct {
 		testN string
 
-		key  reflect.Value
-		want bool
+		val  reflect.Value
+		want reflect.Type
 	}{
-		{"pointer", reflect.ValueOf(new(1)), true},
-		{"value", reflect.ValueOf(1), false},
-		{"interface holding a pointer", ptrItf, true},
-		{"interface holding a value", valItf, false},
-		{"nil interface", nilItf, false},
+		{"value", reflect.ValueOf("a"), reflect.TypeFor[string]()},
+		{"interface", valItf, reflect.TypeFor[int]()},
+		{"nil interface", nilItf, reflect.TypeFor[any]()},
 	}
 
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := isPtrKey(tc.key)
+			have := dynType(tc.val)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_holdsPtr_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"pointer", reflect.TypeFor[*int](), true},
+		{"interface", reflect.TypeFor[any](), true},
+		{"channel", reflect.TypeFor[chan int](), true},
+		{"struct holding a pointer", reflect.TypeFor[time.Time](), true},
+		{"array of pointers", reflect.TypeFor[[1]*int](), true},
+		{"value", reflect.TypeFor[int](), false},
+		{"string", reflect.TypeFor[string](), false},
+		{"struct of values", reflect.TypeFor[TPoint](), false},
+		{"array of values", reflect.TypeFor[[2]int](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := holdsPtr(tc.typ)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)

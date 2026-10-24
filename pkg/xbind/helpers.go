@@ -77,13 +77,38 @@ func isNaNKey(key reflect.Value) bool {
 	return isNaN(key) || key.Kind() != reflect.Pointer && !key.Equal(key)
 }
 
-// isPtrKey returns true if the map key is a pointer, or an interface holding
-// one, which a map lookup finds by its address only.
-func isPtrKey(key reflect.Value) bool {
-	if key.Kind() == reflect.Interface && !key.IsNil() {
-		key = key.Elem()
+// dynType returns the type of the value v holds when v is a non-nil
+// interface, else the type of v.
+func dynType(v reflect.Value) reflect.Type {
+	if v.Kind() == reflect.Interface && !v.IsNil() {
+		return v.Elem().Type()
 	}
-	return key.Kind() == reflect.Pointer
+	return v.Type()
+}
+
+// holdsPtr returns true if a value of the typ type is or holds a pointer, an
+// interface or a channel, which a map lookup compares by address.
+func holdsPtr(typ reflect.Type) bool {
+	switch typ.Kind() { //nolint:exhaustive
+	case reflect.Pointer, reflect.Interface, reflect.Chan,
+		reflect.UnsafePointer:
+
+		return true
+
+	case reflect.Array:
+		return holdsPtr(typ.Elem())
+
+	case reflect.Struct:
+		for i := 0; i < typ.NumField(); i++ {
+			if holdsPtr(typ.Field(i).Type) {
+				return true
+			}
+		}
+		return false
+
+	default:
+		return false
+	}
 }
 
 // zeroer is implemented by types reporting whether they are zero.

@@ -1660,6 +1660,22 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Equal(t, want, dst.M)
 	})
 
+	t.Run("prefilled key holding a pointer", func(t *testing.T) {
+		// --- Given ---
+		ts := time.Date(2024, 1, 1, 1, 0, 0, 0, time.FixedZone("CET", 3600))
+		dst := &struct {
+			M map[time.Time]int `url:"m"`
+		}{M: map[time.Time]int{ts: 1}}
+		src := url.Values{"m[2024-01-01T01:00:00+01:00]": {"5"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[time.Time]int{ts: 5}, dst.M)
+	})
+
 	t.Run("prefilled value key of another type", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(WithDecFunc(func(s string) (any, error) {
