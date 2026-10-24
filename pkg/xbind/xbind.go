@@ -96,6 +96,10 @@ const (
 	// empty after decoding. Only [Decoder] sets it.
 	ECRequired = "ECRequired"
 
+	// ECMissing represents the error code for a field with the "present"
+	// option that no src key reaches. Only [Decoder] sets it.
+	ECMissing = "ECMissing"
+
 	// ECInvTimeFormat represents the error code for field values with an
 	// invalid RFC 3339 time format.
 	ECInvTimeFormat = "ECInvTimeFormat"
@@ -157,6 +161,9 @@ var (
 
 	// ErrRequired represents an error for required fields left empty.
 	ErrRequired = xrr.New("cannot be blank", ECRequired)
+
+	// ErrMissing represents an error for present fields no src key reached.
+	ErrMissing = xrr.New("is missing", ECMissing)
 
 	// ErrInvValue represents an error for an invalid field value.
 	ErrInvValue = xrr.New("invalid value", ECInvValue)

@@ -129,13 +129,17 @@ Tag options:
 |--------------------|---------------------------------------------------|
 | `url:"-"`          | The field is never decoded or encoded.            |
 | `url:",required"`  | `Decode` reports the field when it is left empty. |
+| `url:",present"`   | `Decode` reports the field when no key sends it.  |
 | `url:",omitempty"` | `Encode` skips the field when it is zero.         |
 
 A required field is empty when it is a zero number, an empty string, slice or
 map, a nil pointer or a pointer to an empty value, or a struct whose fields are
 all zero; a `bool` is never empty. The fields of a nil struct pointer are not
 checked. `omitempty` skips a zero value, `false` and a nil pointer included, an
-empty slice or map, and a struct whose `IsZero` method reports it zero.
+empty slice or map, and a struct whose `IsZero` method reports it zero. A
+present field is sent when any key reaches it, whatever its value, so `present`
+tells an absent `count` from `count=0` and an absent `bool` from `false`; it is
+checked in the struct and in the structs keys reach.
 
 A different tag name is set with `WithDecTag` and `WithEncTag`.
 

@@ -27,6 +27,14 @@ func Test_ErrReqStruct(t *testing.T) {
 	assert.Equal(t, "struct or struct pointer required (ECReqStruct)", have)
 }
 
+func Test_ErrMissing(t *testing.T) {
+	// --- When ---
+	have := fmt.Sprintf("%+v", ErrMissing)
+
+	// --- Then ---
+	assert.Equal(t, "is missing (ECMissing)", have)
+}
+
 func Test_ErrDecNotFound(t *testing.T) {
 	// --- When ---
 	have := fmt.Sprintf("%+v", ErrDecNotFound)

@@ -74,6 +74,8 @@ All source is in `pkg/xbind/`.
   decoder, the `required` walk and the encoder must all go through it.
 - `required` fails a field that is empty after decoding. `isEmpty` copies the
   rules of `IsEmpty` in `github.com/ctx42/verax`; keep them in step.
+- `present` fails a field no src key reached (`state.reached`, failing keys
+  included), checked in dst and in the structs keys reached.
 - A nil nested struct pointer is allocated only when a key leads into it; the
   fields of a nil one are not checked for `required`.
 - `TextMarshaler` and `WithEncFunc` functions apply only to values with a

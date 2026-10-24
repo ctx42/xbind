@@ -146,16 +146,19 @@ func NewDecoder(opts ...DecoderOption) *Decoder {
 // only when a src key leads into it. A field with the "required" option is an
 // [ErrRequired] error when it is empty after decoding: a zero number, an empty
 // string, slice or map, a nil pointer or a pointer to an empty value, or a zero
-// struct; a bool is never empty. The required fields of a nil struct pointer,
-// an absent struct, are not checked; those of the structs in maps, slices and
-// arrays are, under paths like "items[k].name". A src key leading into an
-// embedded nil pointer to a struct, which the decoder cannot allocate because
-// the field is unexported, is an [ErrUnexported] field error. A struct tag of
-// dst that does not parse, or that names a field with a bracket ("ids[]") or an
-// embedded struct, is an [ErrInvTag] error; the tags inside a type decoded as
-// one value, as by its UnmarshalText method, are not checked. A key taking more
-// steps than [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an
-// [ErrInvValue] field error. Pointers to pointers to structs are not supported.
+// struct; a bool is never empty. A field with the "present" option is an
+// [ErrMissing] error when no src key reaches it, whatever value the key gives,
+// a zero one included; it is checked in dst and in the structs src keys reach.
+// The required fields of a nil struct pointer, an absent struct, are not
+// checked; those of the structs in maps, slices and arrays are, under paths
+// like "items[k].name". A src key leading into an embedded nil pointer to a
+// struct, which the decoder cannot allocate because the field is unexported, is
+// an [ErrUnexported] field error. A struct tag of dst that does not parse, or
+// that names a field with a bracket ("ids[]") or an embedded struct, is an
+// [ErrInvTag] error; the tags inside a type decoded as one value, as by its
+// UnmarshalText method, are not checked. A key taking more steps than
+// [DefaultMaxDepth], or the limit [WithDecMaxDepth] sets, is an [ErrInvValue]
+// field error. Pointers to pointers to structs are not supported.
 func (dec *Decoder) Decode(dst any, src url.Values) error {
 	sv := mirror.NewStructValue(dst)
 	if sv == nil {
@@ -442,6 +445,7 @@ type state struct {
 	failed  map[string]bool        // Canonical paths of the values that failed.
 	set     map[string]bool        // Canonical paths of the values keys set.
 	indexed map[string]bool        // Canonical paths of the indexed containers.
+	reached map[string]bool        // Canonical paths src keys went through.
 	budget  int                    // Slice elements indexed keys may still add.
 	levels  map[reflect.Type]level // Levels of the struct types met.
 }
@@ -472,6 +476,7 @@ func newState() *state {
 		failed:  make(map[string]bool),
 		set:     make(map[string]bool),
 		indexed: make(map[string]bool),
+		reached: make(map[string]bool),
 		budget:  math.MaxInt,
 		levels:  make(map[reflect.Type]level),
 	}
@@ -600,6 +605,7 @@ func (dec *Decoder) apply(
 	pth string,
 ) error {
 
+	stt.reached[pth] = true // A key failing further on was still sent.
 	if len(steps) == 0 {
 		if stt.set[pth] || stt.indexed[pth] {
 			return keyConflict()
@@ -757,14 +763,16 @@ func (dec *Decoder) isLeafValue(typ reflect.Type) bool {
 }
 
 // required sets an [ErrRequired] error, using setErr, for each required field
-// of dst whose value is empty (see isEmpty). A nil struct pointer is an
-// absent struct, so its fields are not checked. Ignored fields and unexported
-// fields, other than embedded structs, are skipped; an embedded struct has no
-// path, so its required option is ignored. The lvl is the level position of
-// dst; a field its key does not name there is skipped. The seen map holds
-// the struct pointers, maps and slices on the path to dst, so a cycle ends.
-// The paths are canonical; stt gives the text of the map keys src keys
-// reached.
+// of dst whose value is empty (see isEmpty). It sets an [ErrMissing] error
+// instead for each field with the "present" option that no src key reached (see
+// state), in dst at the empty prefix or in a struct a src key reached. A nil
+// struct pointer is an absent struct, so its fields are not checked. Ignored
+// fields and unexported fields, other than embedded structs, are skipped; an
+// embedded struct has no path, so its required option is ignored. The lvl is
+// the level position of dst; a field its key does not name there is skipped.
+// The seen map holds the struct pointers, maps and slices on the path to dst,
+// so a cycle ends. The paths are canonical; stt gives the text of the map keys
+// src keys reached.
 func (dec *Decoder) required(
 	prefix string,
 	dst *mirror.StructValue,
@@ -806,7 +814,13 @@ func (dec *Decoder) required(
 			continue
 		}
 		fldPath := fieldPath(prefix, name)
-		if tag.Contains("required") && isEmpty(fld.Value()) {
+		// A struct no key reached was not sent, so neither were its fields.
+		sent := prefix == "" || stt.reached[prefix]
+		switch {
+		case tag.Contains("present") && sent && !stt.reached[fldPath]:
+			setErr(fldPath, ErrMissing)
+
+		case tag.Contains("required") && isEmpty(fld.Value()):
 			setErr(fldPath, ErrRequired)
 		}
 		dec.requiredIn(fldPath, fld.Value(), seen, stt, setErr)

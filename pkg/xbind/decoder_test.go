@@ -1386,6 +1386,82 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldIs(t, "n", ErrInvValue, err)
 	})
 
+	t.Run("error - present fields not sent", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			B bool   `url:"b,present"`
+			N *int   `url:"n,present"`
+			S string `url:"s,present"`
+			R int    `url:"r,present,required"`
+		}{}
+		src := url.Values{"s": {""}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"b: is missing (ECMissing); " +
+			"n: is missing (ECMissing); " +
+			"r: is missing (ECMissing)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("present fields sent with zero values", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			B bool   `url:"b,present"`
+			N *int   `url:"n,present"`
+			P *TItem `url:"p,present"`
+		}{}
+		src := url.Values{"b": {"false"}, "n": {"0"}, "p.size": {"0"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 0, *dst.N)
+		assert.NotNil(t, dst.P)
+	})
+
+	t.Run("error - present field with a failing key", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			N int `url:"n,present"`
+		}{}
+		src := url.Values{"n": {"x"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "n: invalid value: cannot convert `x` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
+	t.Run("error - present fields in reached elements", func(t *testing.T) {
+		// --- Given ---
+		type item struct {
+			A int `url:"a,present"`
+			B int `url:"b"`
+		}
+		dst := &struct {
+			L []item          `url:"l"`
+			M map[string]item `url:"m"`
+		}{M: map[string]item{"x": {}}}
+		src := url.Values{"l[0].b": {"1"}, "l[1].a": {"2"}, "m[y].b": {"3"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"l[0].a: is missing (ECMissing); " +
+			"m[y].a: is missing (ECMissing)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+	})
+
 	t.Run("registered decoder", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(
@@ -3162,6 +3238,8 @@ func Test_newState(t *testing.T) {
 	assert.Len(t, 0, have.set)
 	assert.NotNil(t, have.indexed)
 	assert.Len(t, 0, have.indexed)
+	assert.NotNil(t, have.reached)
+	assert.Len(t, 0, have.reached)
 	assert.Equal(t, math.MaxInt, have.budget)
 	assert.NotNil(t, have.levels)
 	assert.Len(t, 0, have.levels)
@@ -3568,6 +3646,13 @@ func Test_Decoder_required_tabular(t *testing.T) {
 				P *TRequired `url:"p,required"`
 			}{P: &TRequired{FStr: "a"}},
 			nil,
+		},
+		{
+			"present field no key reached",
+			&struct {
+				A int `url:"a,present"`
+			}{A: 1},
+			[]string{"a"},
 		},
 		{
 			"required embedded struct",
