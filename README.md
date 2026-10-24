@@ -106,18 +106,11 @@ embedded struct takes no name, as its fields belong to the outer struct: a tag
 such as `url:"page"` on one is an `ErrInvTag` error too. The tags inside a type
 handled as one value, by its own text methods or a registered function, are not
 checked. The decoder also reads `attr.color` for a map of values, taking the
-rest of the key as the map key, and `items.0.name` for an index. An index above
-1000 is an error unless `WithDecMaxIndex` sets another limit, and the indexed
-keys of one request, failing ones included, may add, gaps included, as many
-elements as that limit plus one, and one more per key. A failing key that reset
-an array spends its length from that budget too. The first key reaching a slice
-replaces it, indexed keys fill it whatever their order, and keys are added to an
-existing map.
-
-A key takes one step per struct field, map key or index, and the rest of a key
-a map of values takes as its key is one step. A key taking more than 32 steps is
-an error unless `WithDecMaxDepth` sets another limit; it bounds the memory a
-deep key into a recursive struct costs.
+rest of the key as the map key, and `items.0.name` for an index. The first key
+reaching a slice replaces it, indexed keys fill it whatever their order, and
+keys are added to an existing map. An index above the index limit, or a key
+taking more steps than the depth limit (one per struct field, map key or
+index), is an error; see [Options](#options).
 
 When a struct and the structs it embeds have fields with the same key, the
 key names the field Go promotion selects, as in `encoding/json`: the
@@ -141,8 +134,6 @@ empty slice or map, and a struct whose `IsZero` method reports it zero. A
 present field is sent when any key reaches it, whatever its value, so `present`
 tells an absent `count` from `count=0` and an absent `bool` from `false`; it is
 checked in the struct and in the structs keys reach.
-
-A different tag name is set with `WithDecTag` and `WithEncTag`.
 
 ### Errors
 
@@ -296,6 +287,23 @@ import "github.com/ctx42/xbind/pkg/xbind/xbindtest"
 
 `xbindtest.MustEncode(src)` returns the `url.Values` of a struct, and
 `xbindtest.MustDecode(dst, values)` decodes into a struct pointer.
+
+## Options
+
+`NewDecoder` takes the `WithDec…` options, `NewEncoder` the `WithEnc…` ones:
+
+| Option                  | Effect                                          |
+|-------------------------|-------------------------------------------------|
+| `WithDecTag(tag)`       | Reads the `tag` struct tag instead of `url`.    |
+| `WithDecAllowUnknown()` | Ignores keys that name no field.                |
+| `WithDecMaxIndex(n)`    | Sets the largest index a key may use; 1000.     |
+| `WithDecMaxDepth(n)`    | Sets the most steps a key may take; 32.         |
+| `WithDecFunc(fn)`       | Decodes every value of a type with `fn`.        |
+| `WithEncTag(tag)`       | Reads the `tag` struct tag instead of `url`.    |
+| `WithEncFunc(fn)`       | Encodes every value of a type with `fn`.        |
+
+The index limit also bounds the slice elements one request may allocate, and
+the depth limit the memory a deep key into a recursive struct costs.
 
 ## License
 
