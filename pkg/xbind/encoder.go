@@ -115,9 +115,10 @@ func NewEncoder(opts ...EncoderOption) *Encoder {
 // ("ids[]") or an embedded struct, is an [ErrInvTag] error; the tags inside a
 // type encoded as one value, as by its MarshalText method, are not checked. A
 // [time.Time] whose zone offset has seconds, which RFC 3339 cannot write, is
-// encoded in UTC, so it decodes to the same instant. On error, dst keeps the
-// values encoded before the error, which may include some values of the failing
-// field.
+// encoded in UTC, so it decodes to the same instant, when its year in UTC is
+// one RFC 3339 can write; a struct embedding a [time.Time] keeps its own
+// encoding. On error, dst keeps the values encoded before the error, which may
+// include some values of the failing field.
 func (enc *Encoder) Encode(dst url.Values, src any) error {
 	if dst == nil {
 		return ErrNilDst
@@ -600,22 +601,26 @@ func encMapKey(key reflect.Value, reg encReg) (string, error) {
 	return efn(key)
 }
 
-// marshalText returns the text m marshals to. A [time.Time] whose zone offset
-// has seconds, which RFC 3339 cannot write, is marshaled in UTC, so it decodes
-// back to the same instant.
+// marshalText returns the text m, which must not be a nil pointer, marshals
+// to. A [time.Time] whose zone offset has seconds, which RFC 3339 cannot
+// write, is marshaled in UTC, so it decodes back to the same instant, unless
+// its year in UTC is one RFC 3339 cannot write either. A struct embedding a
+// [time.Time] is marshaled by the method it gets from it.
 func marshalText(m encoding.TextMarshaler) ([]byte, error) {
-	switch tim := m.(type) {
+	var tim time.Time
+	switch val := m.(type) {
 	case time.Time:
-		if _, off := tim.Zone(); off%60 != 0 {
-			m = tim.UTC()
-		}
+		tim = val
 
 	case *time.Time:
-		if tim == nil {
-			break
-		}
-		if _, off := tim.Zone(); off%60 != 0 {
-			m = tim.UTC()
+		tim = *val
+
+	default:
+		return m.MarshalText()
+	}
+	if _, off := tim.Zone(); off%60 != 0 {
+		if utc := tim.UTC(); utc.Year() >= 0 && utc.Year() <= 9999 {
+			return utc.MarshalText()
 		}
 	}
 	return m.MarshalText()

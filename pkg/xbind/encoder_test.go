@@ -3080,6 +3080,8 @@ func Test_marshalText_tabular(t *testing.T) {
 	sec := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
 	neg := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", -3630))
 	hour := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 3600))
+	late := time.Date(9999, 12, 31, 23, 59, 59, 0, time.FixedZone("", -30))
+	early := time.Date(0, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
 
 	tt := []struct {
 		testN string
@@ -3091,6 +3093,8 @@ func Test_marshalText_tabular(t *testing.T) {
 		{"negative offset with seconds", neg, "2020-01-01T01:00:30Z"},
 		{"pointer to offset with seconds", &sec, "2019-12-31T23:59:30Z"},
 		{"offset in minutes", hour, "2020-01-01T00:00:00+01:00"},
+		{"UTC past year 9999", late, "9999-12-31T23:59:59+00:00"},
+		{"UTC before year 0", early, "0000-01-01T00:00:00+00:00"},
 		{"other type", TTextVal('A'), "A"},
 	}
 
