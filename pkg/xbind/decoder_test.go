@@ -1643,6 +1643,26 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - field errors of a decoder are filtered", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(string) (TPoint, error) {
+			empty := xrr.NewFieldErrors(map[string]error{})
+			ers := map[string]error{"x": errTest, "y": empty}
+			return TPoint{}, xrr.NewFieldErrors(ers)
+		}))
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"[p]": {"1,2"}} // A key decodeFast does not take.
+
+		// --- When ---
+		err := dec.Decode(dst, src)
+
+		// --- Then ---
+		have := xrr.GetFields(xrr.GetFields(err)["[p]"])
+		assert.Equal(t, map[string]error{"x": errTest}, have)
+	})
+
 	t.Run("nil from an interface decoder", func(t *testing.T) {
 		// --- Given ---
 		dec := NewDecoder(WithDecFunc(func(string) (fmt.Stringer, error) {
@@ -2898,6 +2918,40 @@ func Test_Decoder_Decode(t *testing.T) {
 		xrrtest.AssertFieldsEqual(t, want, err)
 	})
 
+	t.Run("error - required behind a set embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			*TRequired
+			N int `url:"n"`
+		}{}
+		src := url.Values{"f_int": {"1"}}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "f_str: cannot be blank (ECRequired)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, 1, dst.FInt)
+	})
+
+	t.Run("required behind an embedded pointer to itself", func(t *testing.T) {
+		// --- Given ---
+		type node struct {
+			*node
+			R string `url:"r,required"`
+		}
+		dst := &node{R: "x"}
+		dst.node = dst
+		src := url.Values{}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
 	t.Run("unexported embedding cycle", func(t *testing.T) {
 		// --- Given ---
 		dst := &TSelfEmb{}
@@ -3242,6 +3296,27 @@ func Test_Decoder_decodeFast(t *testing.T) {
 		assert.Equal(t, "n", dst.In.Name)
 	})
 
+	t.Run("error - field errors of a decoder are filtered", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecFunc(func(string) (TPoint, error) {
+			empty := xrr.NewFieldErrors(map[string]error{})
+			ers := map[string]error{"x": errTest, "y": empty}
+			return TPoint{}, xrr.NewFieldErrors(ers)
+		}))
+		dst := &struct {
+			P TPoint `url:"p"`
+		}{}
+		src := url.Values{"p": {"1,2"}}
+
+		// --- When ---
+		ok, err := dec.decodeFast(reflect.ValueOf(dst).Elem(), src)
+
+		// --- Then ---
+		assert.True(t, ok)
+		have := xrr.GetFields(xrr.GetFields(err)["p"])
+		assert.Equal(t, map[string]error{"x": errTest}, have)
+	})
+
 	t.Run("many fields for few keys", func(t *testing.T) {
 		// --- Given ---
 		dst := &TFuzzDec{}
@@ -3565,6 +3640,7 @@ func Test_Decoder_directMap_tabular(t *testing.T) {
 		M  map[string]int   `url:"m"`
 		MI map[int]string   `url:"mi"`
 		MS map[string]TItem `url:"ms"`
+		D  map[string]int   `url:"d.m"`
 	}
 
 	tt := []struct {
@@ -3574,6 +3650,7 @@ func Test_Decoder_directMap_tabular(t *testing.T) {
 	}{
 		{"other key text", "mi[01]"},
 		{"dotted", "m.a"},
+		{"dotted field name", "d.m[a]"},
 		{"more segments", "m[a].b"},
 		{"empty key", "m[]"},
 		{"bracketed field", "[m][a]"},
@@ -4743,6 +4820,29 @@ func Test_Decoder_apply(t *testing.T) {
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
 		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
+	})
+
+	t.Run("error - failed key keeps spare capacity", func(t *testing.T) {
+		// --- Given ---
+		s := make([]TRequired, 1, 8)
+		s[0].FStr = "a"
+		dst := reflect.ValueOf(&s).Elem()
+		stp := []step{
+			{kind: stepIndex, pos: 3},
+			{kind: stepField, idx: []int{1}, name: "f_int"},
+		}
+		vls := []string{"x"}
+
+		stt := newState()
+		stt.markReset("", reflect.Value{})
+
+		// --- When ---
+		err := NewDecoder().apply(dst, stp, vls, stt, "")
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
+		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
+		assert.Equal(t, 8, cap(s))
 	})
 }
 
