@@ -17,6 +17,11 @@ Dependencies are limited to ctx42 modules: `mirror` and `xrr`, `testing` in
 tests and in `xbindtest`, and `testkit` in tests. Do not add third-party
 modules.
 
+`internal/bench` is a separate module (own `go.mod`, `replace` to `../..`)
+benchmarking xbind against other form libraries; third-party modules belong
+there only. Root `./...` commands skip it; its package doc says how to run it
+and `report.go` turns the output into tables.
+
 ## Commands
 
 ```bash
