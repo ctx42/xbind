@@ -305,6 +305,84 @@ import "github.com/ctx42/xbind/pkg/xbind/xbindtest"
 The index limit also bounds the slice elements one request may allocate, and
 the depth limit the memory a deep key into a recursive struct costs.
 
+## Performance
+
+Create a `Decoder` or `Encoder` once with `NewDecoder` or `NewEncoder` and
+reuse it: it caches what it learns about each type, which most of its speed
+comes from. A zero-value `Decoder` or `Encoder` works, but caches nothing.
+
+The `internal/bench` module compares xbind with go-playground/form v4.5.0,
+gorilla/schema v1.4.1, ajg/form v1.9.0, monoculum/formam v3.6.0, gin's form
+binding v1.12.0 and google/go-querystring v1.2.0. Each library gets the keys
+in its own syntax and runs with its default options, and is timed only on the
+workloads it decodes or encodes correctly; `—` marks the others.
+
+| Workload      | Values                                                   |
+|---------------|----------------------------------------------------------|
+| `flat`        | 6 fields: string, int, uint, float64, bool, `time.Time`  |
+| `nested`      | 2 nested structs of 2 fields each                        |
+| `slices`      | 2 slices of 5 values each, repeated keys                 |
+| `maps`        | 2 maps of 3 entries each                                 |
+| `structs`     | a map of 2 structs and a slice of 2 structs              |
+| `list100`     | a slice of 100 structs, 200 keys                         |
+| `err-value`   | decode only: one value that does not convert             |
+| `err-unknown` | decode only: one unknown key                             |
+
+Time per operation in nanoseconds, the best of 8 runs on an Intel Core
+i7-1355U pinned to its performance cores, Go 1.27.1. Decode:
+
+| Workload    |  xbind | go-playground | gorilla |     ajg | formam |   gin |
+|-------------|-------:|--------------:|--------:|--------:|-------:|------:|
+| flat        |    326 |           315 |   3,195 |   4,775 |      — | 1,485 |
+| nested      |    193 |           478 |   2,700 |   4,060 |  1,259 | 1,049 |
+| slices      |    571 |           928 |   1,945 |   8,022 |      — |   866 |
+| maps        |  1,313 |         1,303 |       — |   5,994 |  4,119 |     — |
+| structs     |  2,925 |         2,190 |       — |  11,645 |  4,270 |     — |
+| list100     | 61,141 |        40,143 | 108,036 | 212,807 | 90,500 |     — |
+| err-value   |    971 |           771 |   2,046 |   2,029 |    807 |   603 |
+| err-unknown |    594 |             — |   1,470 |   2,848 |    507 |     — |
+
+Encode:
+
+| Workload |  xbind | go-playground | gorilla |     ajg | go-querystring |
+|----------|-------:|--------------:|--------:|--------:|---------------:|
+| flat     |    577 |           606 |       — |   3,916 |          1,840 |
+| nested   |    509 |           444 |       — |   4,650 |          1,176 |
+| slices   |    547 |           918 |     851 |   5,464 |          1,365 |
+| maps     |  1,066 |           996 |       — |   4,653 |              — |
+| structs  |  1,238 |         1,033 |       — |   9,863 |              — |
+| list100  | 22,755 |        26,541 |       — | 214,948 |              — |
+
+Run them from the `internal/bench` directory, which prints these tables, with
+memory and allocations, and the reason each library skips a workload:
+
+```bash
+go test -run '^$' -bench . -benchmem -count 5 -v | go run report.go
+```
+
+### Why xbind is slower than go-playground
+
+go-playground walks the fields of the struct and looks each one up in the
+values. xbind walks the keys, because it does what go-playground does not:
+
+- Rejects keys that name no field, unless `WithDecAllowUnknown` is given;
+  go-playground ignores them.
+- Applies the keys in sorted order and reports keys spelled differently that
+  reach one value (`list.0` and `list[0]`, `m[01]` and `m[1]`), so a request
+  decodes the same way every time instead of by map iteration order.
+- Undoes a key whose value fails, leaving no field half set.
+- Checks `required` and `present` fields after decoding.
+- Returns xrr field errors with codes, ready for an API response, which cost
+  more to build than formatted strings.
+- On encode, detects pointer cycles and rejects map keys that would not decode
+  back, so its output always decodes to the same value.
+
+When every key is a plain path of struct fields (`name`, `page.size`), as in
+most query strings, these checks have nothing to do: xbind then decodes field
+by field, as go-playground does, and canonical keys of maps of plain values
+(`attr[k]`) take a similar shortcut. Keys into slices and maps of structs
+(`list[3].size`) still take the full path, which is where the gap remains.
+
 ## License
 
 MIT; see [LICENSE.md](LICENSE.md).
