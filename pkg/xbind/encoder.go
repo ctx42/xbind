@@ -1149,28 +1149,22 @@ func (enc *Encoder) encodeMapSure(
 	for it := src.MapRange(); it.Next(); {
 		key.SetIterKey(it)
 		val.SetIterValue(it)
-		txt, err := mp.key(key)
-		if err != nil {
-			return fieldError(prefix, err)
-		}
+		txt, _ := mp.key(key) // Encoding a sure key never fails.
 		if mp.flt {
 			// The key of each field written to the stack, then copied once.
 			kpt := append(append(append(pre, '['), txt...), ']')
-			if err = encodeFlat(dst, kpt, val, mp.fls); err != nil {
+			if err := encodeFlat(dst, kpt, val, mp.fls); err != nil {
 				return err
 			}
 			continue
 		}
 		pth := prefix + "[" + txt + "]"
 		if mp.val != nil {
-			txt, err = mp.val(val)
-			if err != nil {
-				return fieldError(pth, err)
-			}
+			txt, _ = mp.val(val) // Encoding a plain value never fails.
 			dst[pth] = append(dst[pth], txt)
 			continue
 		}
-		err = enc.encodeWith(dst, pth, val, est, mp.lvl, mp.fls)
+		err := enc.encodeWith(dst, pth, val, est, mp.lvl, mp.fls)
 		if err != nil {
 			return err
 		}
@@ -1199,18 +1193,12 @@ func (enc *Encoder) encodeFewSure(
 	n := 0
 	for it := src.MapRange(); it.Next(); {
 		key.SetIterKey(it)
-		txt, err := mp.key(key)
-		if err != nil {
-			return fieldError(prefix, err)
-		}
+		txt, _ := mp.key(key) // Encoding a sure key never fails.
 		if mp.str && (txt == "" || strings.ContainsAny(txt, "[]")) {
 			return enc.encodeMapSorted(dst, prefix, src, est)
 		}
 		val.SetIterValue(it)
-		vtx, err := mp.val(val)
-		if err != nil {
-			return fieldError(prefix+"["+txt+"]", err)
-		}
+		vtx, _ := mp.val(val) // Encoding a plain value never fails.
 		ents[n] = entry{key: txt, val: vtx}
 		n++
 	}
