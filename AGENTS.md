@@ -63,16 +63,18 @@ All source is in `pkg/xbind/`.
   them into steps by type without side effects (`plan`), performs the steps
   on `dst` (`apply`, which allocates, writes map values back and resets
   slices once per call), then runs the `required` walk (`required`,
-  `requiredIn`) over `dst` when the type has such fields. When every key is
-  a canonical path of struct fields, `decodeFast` decodes field by field
-  without sorting; otherwise a plain key naming a leaf field skips planning
-  (`direct`), and so does a canonical entry of a map of built-in values
-  (`directMap`). The per-call `state` comes from a pool in the `Decoder`; a
-  canonical key (the path of its value) records its path only when another
-  key could alias it (`setAt`). These shortcuts must give exactly what the
-  key-driven path gives, which `internal/difftest` checks.
+  `requiredIn`) over `dst` when the type has such fields. The per-call
+  `state` comes from a pool in the `Decoder`; a canonical key (the path of
+  its value) records its path only when another key could alias it
+  (`setAt`).
 - **`decoders.go`** — built-in decoders for base kinds, `time.Time` and
   `time.Duration`; `decFor` looks in the registry first.
+- **`shortcuts.go`** — the decode shortcuts. When every key is a canonical
+  path of struct fields, `decodeFast` decodes field by field without
+  sorting; otherwise a plain key naming a leaf field skips planning
+  (`direct`), and so does a canonical entry of a map of built-in values
+  (`directMap`). They must give exactly what the key-driven path gives,
+  which `internal/difftest` checks.
 - **`encoder.go`** — `Encoder`, its options (`WithEncTag`, `WithEncFunc`).
   `encode` walks values (`encodeFields`, `encodeSlice`, `encodeMap`);
   `encSrc` encodes one value: registered function, then `Marshaler`, then
