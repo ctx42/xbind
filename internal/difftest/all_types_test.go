@@ -35,9 +35,10 @@ func (lvl Level) MarshalText() ([]byte, error) {
 
 // Inner is a struct held by value, by pointer, in slices and in maps.
 type Inner struct {
-	Size int      `url:"size"`
-	Name string   `url:"name,omitempty"`
-	Tags []string `url:"tags"`
+	Size int       `url:"size"`
+	Name string    `url:"name,omitempty"`
+	Tags []string  `url:"tags"`
+	At   time.Time `url:"at,omitempty"`
 }
 
 // Emb is embedded in T; its Dup field is shadowed by the one of T.

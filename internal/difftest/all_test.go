@@ -70,6 +70,33 @@ func prefill(dst *T) {
 	dst.P = &Inner{Size: 1}
 }
 
+// late sets one random time of dst, when dst has it, to a year past 9999,
+// which encoding fails on.
+func late(rnd *rand.Rand, dst *T) {
+	tim := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+	switch rnd.IntN(4) {
+	case 0:
+		dst.Tm = tim
+
+	case 1:
+		if len(dst.L) > 0 {
+			dst.L[len(dst.L)-1].At = tim
+		}
+
+	case 2:
+		for key, val := range dst.MS {
+			val.At = tim
+			dst.MS[key] = val
+			break
+		}
+
+	default:
+		if dst.P != nil {
+			dst.P.At = tim
+		}
+	}
+}
+
 // outcome returns the text of the error and of the value a call left, which
 // two calls give alike when they behave alike.
 func outcome(err error, val any) string {

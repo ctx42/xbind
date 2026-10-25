@@ -101,16 +101,18 @@ func Test_Encoder_Encode(t *testing.T) {
 
 	for i := range encodes {
 		var val any = &T{}
+		tv := val.(*T)
 		if rnd.IntN(3) == 0 {
 			tc := &TC{}
-			if rnd.IntN(2) == 0 {
-				prefill(&tc.T)
-			}
-			val = tc
-		} else if rnd.IntN(2) == 0 {
-			prefill(val.(*T))
+			val, tv = tc, &tc.T
+		}
+		if rnd.IntN(2) == 0 {
+			prefill(tv)
 		}
 		_ = dec.Decode(val, randSrc(rnd)) // A value is set even on error.
+		if rnd.IntN(10) == 0 {
+			late(rnd, tv)
+		}
 		src := val
 		if rnd.IntN(2) == 0 {
 			src = reflect.ValueOf(val).Elem().Interface() // By value.
