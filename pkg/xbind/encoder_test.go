@@ -2035,6 +2035,78 @@ func Test_Encoder_Encode(t *testing.T) {
 	})
 }
 
+func Test_Encoder_Encode_tabular(t *testing.T) {
+	type in struct {
+		T  time.Time   `url:"t"`
+		TS []time.Time `url:"ts"`
+	}
+	bad := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tt := []struct {
+		testN string
+
+		src  any
+		want string
+	}{
+		{
+			"error - time field",
+			&struct {
+				T time.Time `url:"t"`
+			}{T: bad},
+			"t",
+		},
+		{
+			"error - time in a slice field",
+			&struct {
+				TS []time.Time `url:"ts"`
+			}{TS: []time.Time{bad}},
+			"ts[0]",
+		},
+		{
+			"error - time in a nested struct",
+			&struct {
+				In in `url:"in"`
+			}{In: in{T: bad}},
+			"in.t",
+		},
+		{
+			"error - time in a slice of structs",
+			&struct {
+				L []in `url:"l"`
+			}{L: []in{{T: bad}}},
+			"l[0].t",
+		},
+		{
+			"error - time slice in a slice of structs",
+			&struct {
+				L []in `url:"l"`
+			}{L: []in{{TS: []time.Time{bad}}}},
+			"l[0].ts[0]",
+		},
+		{
+			"error - time in a map of structs",
+			&struct {
+				M map[string]in `url:"m"`
+			}{M: map[string]in{"a": {T: bad}}},
+			"m[a].t",
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			dst := url.Values{}
+
+			// --- When ---
+			err := NewEncoder().Encode(dst, tc.src)
+
+			// --- Then ---
+			assert.ErrorContain(t, "year outside of range", err)
+			assert.Equal(t, []string{tc.want}, xrr.FieldNames(err))
+		})
+	}
+}
+
 func Fuzz_Encoder_Encode(f *testing.F) {
 	f.Add(
 		"abc",
