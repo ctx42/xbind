@@ -22,6 +22,11 @@ benchmarking xbind against other form libraries; third-party modules belong
 there only. Root `./...` commands skip it; its package doc says how to run it
 and `report.go` turns the output into tables.
 
+`internal/difftest` is another such module: it decodes and encodes random
+inputs with xbind and with `ref`, a copy of `pkg/xbind` from before the
+decode and encode shortcuts, and fails on any difference in values or
+errors. CI runs it. A behavior change made on purpose goes into `ref` too.
+
 ## Commands
 
 ```bash
@@ -33,6 +38,7 @@ go vet ./...                                       # vet
 golangci-lint run ./...                            # lint
 go test ./pkg/xbind/ -run XXX -fuzz '^Fuzz_Decoder_Decode$' -fuzztime 60s
 gomake :doc:mce                                    # re-inject README examples
+(cd internal/difftest && go test -count=1 ./...)   # differential test
 ```
 
 `go.mod` says `go 1.26`; the code must pass on Go 1.26 and on the newest
@@ -64,8 +70,7 @@ All source is in `pkg/xbind/`.
   (`directMap`). The per-call `state` comes from a pool in the `Decoder`; a
   canonical key (the path of its value) records its path only when another
   key could alias it (`setAt`). These shortcuts must give exactly what the
-  key-driven path gives, which a differential test against the previous
-  release is the way to check.
+  key-driven path gives, which `internal/difftest` checks.
 - **`decoders.go`** — built-in decoders for base kinds, `time.Time` and
   `time.Duration`; `decFor` looks in the registry first.
 - **`encoder.go`** — `Encoder`, its options (`WithEncTag`, `WithEncFunc`).

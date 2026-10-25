@@ -40,3 +40,7 @@ jobs:
 
     - name: Test
       run: go test -race ./...
+
+    - name: Differential test
+      working-directory: internal/difftest
+      run: go test ./...

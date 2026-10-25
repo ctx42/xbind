@@ -1,0 +1,8 @@
+github.com/ctx42/mirror v0.7.0 h1:pZTEIyHDE3SNz7Y/nfm+OWpheOrX3o8IyBVIxe1F2ec=
+github.com/ctx42/mirror v0.7.0/go.mod h1:HgzjedUHW+SbGIb68vZrVlFlD61PRN6uGncAScT5Lvw=
+github.com/ctx42/testing v0.57.1 h1:/yQWQeHLMK6WkiHfO/5d+a3yqY8JU+h4f6UUknMRPKA=
+github.com/ctx42/testing v0.57.1/go.mod h1:wRBqNRtlxDZnXIjgCX3zr05Acl6JC1D6cSBN2IpaMIs=
+github.com/ctx42/testkit v0.16.3 h1:yl7Strwx1ggRAn9w+8rEcYEqtGjdLHTeK+QwxyjFikc=
+github.com/ctx42/testkit v0.16.3/go.mod h1:byv5xbKl++RfZNTGg3/61Qibo/CbVQZStyVJS9/ckVo=
+github.com/ctx42/xrr v0.18.3 h1:ZZgih0SckJrtUsEG+m9j32pjxrZacXHTIAZXrswINOk=
+github.com/ctx42/xrr v0.18.3/go.mod h1:EZcjNFmht3pfbUCPsuL206F8wUEn/xUe/a+K8j/c0q4=
