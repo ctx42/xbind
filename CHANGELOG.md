@@ -1,0 +1,202 @@
+## v0.1.0 (Sun, 25 Oct 2026 12:35:05 UTC)
+- chore: scaffold project.
+- chore: add MIT license.
+- feat(xbind): add url.Values binding for structs.
+- docs: describe xbind usage in the README.
+- chore: remove the IDE test run configuration.
+- build(deps): update github.com/ctx42/mirror to v0.6.3.
+- docs: drop the xbindtest helpers from the README features.
+- fix(xbind)!: encode nil pointers as nothing.
+- fix(xbind)!: report bad query times and durations with their codes.
+- refactor(xbind)!: remove error sentinels the package never returns.
+- chore: add the IDE test run configuration.
+- refactor(xbind)!: rename UnmarshalJSONr to UnmarshalJSONReader.
+- refactor(xbind)!: turn the error types into sentinels.
+- fix(xbind)!: make the not-found error codes equal their names.
+- refactor(xbind)!: remove EncloseError.
+- refactor(xbind)!: add named decoder and encoder option types.
+- fix(xbind)!: allocate nested struct pointers lazily.
+- fix(xbind): apply the required option to struct fields.
+- fix(xbind)!: fail required fields left empty after decoding.
+- feat(xbind)!: reject struct tags that do not parse.
+- feat(xbind): add WithDecFunc and WithEncFunc options.
+- fix(xbind)!: return json.InvalidUnmarshalError from HUE as it is.
+- fix(xbind): return ErrNilDst from Encode for a nil destination.
+- fix(xbind)!: give Encode its own error for a non-struct source.
+- feat(xbind)!: follow Go promotion rules for shadowed and ambiguous keys.
+- fix(xbind)!: replace slices and arrays decoded from a key.
+- fix(xbind)!: encode src and embedded structs field by field.
+- ci: test on the minimum and newest Go versions.
+- docs: add CI, pkg.go.dev and Go version badges to the README.
+- docs: add AGENTS.md with commands, architecture and invariants.
+- test(xbind): fuzz pointers, shadowing, registered codecs and slices.
+- ci: fuzz the decoder, encoder and JSON helpers weekly.
+- feat(xbind)!: decode bracket keys into maps and slices of structs.
+- feat(xbind)!: encode map keys and struct indexes in brackets.
+- test(xbind): fuzz slices and maps of structs.
+- docs(xbind): describe the bracket key syntax.
+- fix(xbind): skip keys naming ignored embedded non-structs.
+- fix(xbind): check the tags of structs in slices, arrays and maps.
+- fix(xbind): encode structs embedded below the top level field by field.
+- fix(xbind): make WithDecMaxIndex(0) allow only index 0.
+- fix(xbind): reject the largest int index instead of panicking.
+- perf(xbind): join the dotted map key once.
+- fix(xbind): replace a map value a key sets as a whole.
+- fix(xbind): leave no trace of a key whose value fails.
+- fix(xbind): name a map entry by its decoded key.
+- fix(xbind): key required errors like the values they check.
+- fix(xbind)!: apply src keys in order and reject conflicting keys.
+- fix(xbind)!: bound the slice elements indexed keys may add.
+- refactor(xbind): allocate the pointers of setDst with deref.
+- refactor(xbind): check nested struct fields through requiredIn.
+- perf(xbind): skip leaf containers in the required check.
+- style(xbind): separate multi-line switch cases with a blank line.
+- test(xbind): reach a value before the extra segment in plan's test.
+- test(xbind): name the index error tests as error paths.
+- docs(xbind): describe the slice keys and the values Encode leaves out.
+- docs(xbind): show bracketed map keys in the README and Decode example.
+- docs(xbind): say a tag name with a bracket is an ErrInvTag error.
+- fix(xbind): stop baseType at a type holding itself.
+- fix(xbind): drop the capacity a failing indexed key grew.
+- perf(xbind): look up the keys with errors in a set.
+- fix(xbind): check a struct with a nil embedding by its fields.
+- fix(xbind): allocate nil embedded pointers before UnmarshalText.
+- fix(xbind): set a slice or array only when all its values decode.
+- fix(xbind): tell map entries apart as Go compares their keys.
+- fix(xbind): report a map or slice holding itself as a cycle.
+- fix(xbind): skip a map key pointing to a nil pointer.
+- fix(xbind): set back what a failing key in a map entry reset.
+- fix(xbind): take only key errors for unknown keys.
+- fix(xbind): mark a value with no decoder as failed.
+- fix(xbind): reject map keys holding a NaN.
+- fix(xbind)!: reject a NaN map key in Encode.
+- fix(xbind)!: encode map keys in order and reject duplicates.
+- fix(xbind)!: index a Marshaler held in an interface element.
+- fix(xbind)!: use a function registered for *T for []*T elements.
+- docs(xbind): name the values Encode has no encoder for.
+- refactor(xbind): encode a duration from its int value.
+- fix(xbind)!: reject time offsets RFC 3339 does not allow.
+- fix(xbind): tell an unknown field before a time error.
+- fix(xbind): report a large trailing number as trailing data.
+- docs(xbind): say HUE replaces the lead of an envelope.
+- fix(xbind)!: keep the cause of a JSON time error.
+- fix(xbind): stop at a Valuer returning a value of its own type.
+- fix(xbind)!: reject a name on an embedded struct.
+- test(xbind): check that checkTags skips unexported fields.
+- fix(xbind)!: never take a key fields share for an ignored key.
+- test(xbind): pin the errors of two failed-key tests.
+- style(xbind): inline the literals that fit at their one use.
+- style(xbind): build composite When arguments in Given.
+- style(xbind): separate the subjects of three Given blocks.
+- style(xbind): order two tests as their subjects are declared.
+- style(xbind): declare Given values in the order the call takes them.
+- style(xbind): declare DefaultMaxIndex in the package file.
+- style(xbind): reuse err for the indexed step of apply.
+- test(xbind): test requiredIn on its own.
+- style(xbind): open split want strings with an empty segment.
+- style(xbind): name the fuzz test encoder enc.
+- style(xbind): name three error-path subtests as such.
+- style(xbind): shorten a subtest name over the line limit.
+- test(xbind): cover edge cases the godocs name.
+- style(xbind): name the UnmarshalJSONReader table test in full.
+- style(xbind): name encoder subtests by their condition.
+- style(xbind): read back the registered encoder with must.Value.
+- style(xbind): name decoded readbacks back, not have.
+- style(xbind): table the bool, int and uint encoder tests.
+- style(xbind): name the code option of single's error.
+- fix(xbind): make a nil map only for an entry written to it.
+- fix(xbind): wrap ErrType when a decoder returns another type.
+- perf(xbind): build the level of a struct type once.
+- docs(xbind): say the index limit bounds the slices a src allocates.
+- perf(xbind): build the index path of an element only when used.
+- perf(xbind): copy a map key only for a pointer MarshalText.
+- refactor(xbind): lower the bool text once in decBool.
+- docs(xbind): say only durations have a dedicated encoder.
+- test(xbind): compare decoded values without type assertions.
+- fix(xbind): envelop a type error with no type like the others.
+- test(xbind): assert the ignored keys newLevel records.
+- test(xbindtest): pin that the helpers panic with the error.
+- style(xbind): separate the cases of decode's error switch.
+- docs(xbind): link the exported names comments mention.
+- docs(xbind): say apply undoes the resets of a failing key.
+- style(xbind): call the code under test once per subtest.
+- docs(xbind): join the clauses of the TFuzzEmb comment.
+- docs(xbind): say what encString needs instead of its signature.
+- style(xbind): make the fixed fixture errors with errors.New.
+- style(xbind): stop shadowing the typ parameter.
+- fix(xbind): skip marshalers reached through nil embeds.
+- fix(xbind): reach UnmarshalText only through set embeds.
+- fix(xbind): key errors by the src text of registered keys.
+- fix(xbind): decode with a WithDecFunc for a pointer type.
+- test(xbind): cover decoding with the largest index limit.
+- style(xbind): tidy test declarations and discards.
+- fix(xbind): allocate only the embeds UnmarshalText goes through.
+- test(xbind): cover an error from a pointer type decoder.
+- perf(xbind): skip method lookups for structs with no nil embeds.
+- style(xbind): inline the registered key check in apply.
+- fix(xbind): end the required walk on maps and slices holding themselves.
+- test(xbind): declare the encoder registry first in its Given blocks.
+- perf(xbind): build each struct level once per Encode call.
+- fix(xbind): apply functions registered for interface types.
+- fix(xbind): reject map keys holding a NaN when encoding.
+- fix(xbind): report the same map key error on every Encode call.
+- test(xbind): test the integer decoders at their range boundaries.
+- test(xbind): tell a registered decoder from UnmarshalText apart.
+- test(xbind): cover the element budget a failed indexed key gives back.
+- test(xbind): cover sub-slices and first-field pointers in cycle checks.
+- test(xbind): test the required option on an empty embedded struct.
+- test(xbind): check that an embedded interface has no key.
+- refactor(xbind): drop field checks the level already makes in required.
+- test(xbind): tighten assertions on three error paths.
+- docs(xbind): state what required and omitempty treat as empty.
+- test(xbind): check that declares finds a method of a generic type.
+- fix(xbind): reject a decoded map key that is not comparable.
+- fix(xbind): let a decoder for an interface type return nil.
+- fix(xbind): undo every change a failing key makes.
+- fix(xbind): update the entries of a prefilled map with pointer keys.
+- fix(xbind): look into embedded interfaces for nil embeds.
+- fix(xbind): tell embedded pointers apart by type in hasNilEmbedded.
+- fix(xbind): encode a -0 map key as the 0 one Decode reads it as.
+- docs(xbind): say omitempty calls IsZero only on structs.
+- docs(xbind): warn that the JSON helpers read with no size limit.
+- fix(xbind): accept a nil interface map key from a decoder.
+- fix(xbind): allocate through embedded interfaces for UnmarshalText.
+- fix(xbind): undo the embeds allocated for a failing UnmarshalText.
+- fix(xbind): index only pointer keys of a prefilled map.
+- fix(xbind): call the IsZero a struct declares despite nil embeds.
+- revert(xbind): skip a declared IsZero on structs with nil embeds.
+- fix(xbind): check only the method path of a value an interface holds.
+- fix(xbind): index prefilled map keys holding pointers, by type.
+- style(xbind): align tests with the style rules.
+- fix(xbind): refuse a nil pointer an embedded interface holds.
+- fix(xbind): keep the element budget spent by failing keys.
+- feat(xbind)!: limit the steps a src key may take.
+- fix(xbind)!: apply WithEncFunc pointer functions to values.
+- fix(xbind): honor a declared IsZero on structs with nil embeds.
+- fix(xbind): skip the tags inside types handled as one value.
+- feat(xbind): add the present tag option.
+- docs(xbind): say that conflicts follow the paths of keys.
+- fix(xbind): encode a time with offset seconds in UTC.
+- fix(xbind): skip one-value types held in containers in checkTags.
+- fix(xbind): check present fields behind nil embedded pointers.
+- fix(xbind): count keys plan rejects as sent for present.
+- fix(xbind): keep the encoding of a time UTC cannot write.
+- docs(xbind): correct the godoc of the options and isEmpty.
+- fix(xbind): charge undone array resets to the element budget.
+- fix(xbind): treat equal composite map keys as one entry.
+- fix(xbind): pair value MarshalText with TextUnmarshaler.
+- docs(readme): inject the WithDecFunc example from its test.
+- docs(readme): list the decoder and encoder options in a table.
+- test(bench): benchmark xbind against other form libraries.
+- build(bench): update dependencies.
+- build(deps): require mirror v0.7.0.
+- perf(xbind): cache type facts and add fast decode and encode paths.
+- docs(readme): add a performance section with benchmarks.
+- test(difftest): compare xbind with a copy of its earlier code.
+- test(xbind): cover undo, embedded required walk and nested errors.
+- refactor(xbind): drop unreachable errors in sure map encoding.
+- refactor(xbind): move the decode shortcuts into shortcuts.go.
+- chore(idea): set the module of the go test all run configuration.
+- test(xbind): cover time encode errors in every encoder walk.
+- test(difftest): encode times that fail to encode.
+
