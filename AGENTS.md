@@ -45,19 +45,39 @@ All source is in `pkg/xbind/`.
 
 - **`xbind.go`** — package doc, error codes and sentinels, `Marshaler`,
   `checkTags` (rejects tags that do not parse, run first by `Decode` and
-  `Encode`), and `level`/`newLevel` (which field each key names).
+  `Encode`), and `level`/`newLevel` (which field each key names, from
+  `mirror.Names`).
+- **`cache.go`** — `typeCache`, the per-instance cache `NewDecoder` and
+  `NewEncoder` create (a zero value has none and computes per call): type
+  facts, tag checks, levels, the decoder's key fields and the encoder's field
+  plans, in copy-on-write `typeMap`s read without locks.
 - **`decoder.go`** — `Decoder`, its options (`WithDecTag`,
   `WithDecAllowUnknown`, `WithDecMaxIndex`, `WithDecMaxDepth`, `WithDecFunc`).
-  `decode` splits every src key into segments (`parseKey`), turns them into
-  steps by type without side effects (`plan`), performs the steps on `dst`
-  (`apply`, which allocates, writes map values back and resets slices once per
-  call), then runs the `required` walk (`required`, `requiredIn`) over `dst`.
+  `decode` sorts the src keys, splits each into segments (`parseKey`), turns
+  them into steps by type without side effects (`plan`), performs the steps
+  on `dst` (`apply`, which allocates, writes map values back and resets
+  slices once per call), then runs the `required` walk (`required`,
+  `requiredIn`) over `dst` when the type has such fields. When every key is
+  a canonical path of struct fields, `decodeFast` decodes field by field
+  without sorting; otherwise a plain key naming a leaf field skips planning
+  (`direct`), and so does a canonical entry of a map of built-in values
+  (`directMap`). The per-call `state` comes from a pool in the `Decoder`; a
+  canonical key (the path of its value) records its path only when another
+  key could alias it (`setAt`). These shortcuts must give exactly what the
+  key-driven path gives, which a differential test against the previous
+  release is the way to check.
 - **`decoders.go`** — built-in decoders for base kinds, `time.Time` and
   `time.Duration`; `decFor` looks in the registry first.
 - **`encoder.go`** — `Encoder`, its options (`WithEncTag`, `WithEncFunc`).
   `encode` walks values (`encodeFields`, `encodeSlice`, `encodeMap`);
   `encSrc` encodes one value: registered function, then `Marshaler`, then
-  `TextMarshaler`, then `encFor`.
+  `TextMarshaler`, then `encFor`. Field plans (`fields`, holding the plans
+  of nested structs), plain value types (`plain`, `time.Time` included),
+  slice plans and composite types (`isComposite`) skip `encSrc` where it
+  would find nothing; a map that cannot fail is encoded in map order
+  (`encodeMapSure`); cycles are tracked only for types that can loop
+  (`canLoop`), and `src` is copied only when a method needs an address
+  (`needsAddr`).
 - **`encoders.go`** — built-in encoders and `encReg.lookup`.
 - **`json.go`** — `UnmarshalJSON`, `UnmarshalJSONReader`,
   `UnmarshalJSONBody`, and `HUE`/`MaybeHUE`, which translate `encoding/json`
@@ -74,8 +94,9 @@ All source is in `pkg/xbind/`.
 - `Encode` output decodes back with `Decode` to the same value; the fuzz
   tests in `decoder_test.go` and `encoder_test.go` check it. Keep the two
   sides symmetric.
-- Keys follow Go's promotion rules, as in `encoding/json`: `newLevel` picks
-  the shallowest field per key, a tagged one among equals, or none. The
+- Keys follow Go's promotion rules, as in `encoding/json`: `newLevel`
+  (`mirror.Names`) picks the shallowest field per key, a tagged one among
+  equals, or none. The
   decoder, the `required` walk and the encoder must all go through it.
 - `required` fails a field that is empty after decoding. `isEmpty` copies the
   rules of `IsEmpty` in `github.com/ctx42/verax`; keep them in step.

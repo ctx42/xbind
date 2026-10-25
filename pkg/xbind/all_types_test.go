@@ -717,3 +717,8 @@ type TFuzzEnc struct {
 	LS []TItem           `url:"ls"`
 	MS map[string]TItem  `url:"ms"`
 }
+
+// tZeroPtr has an IsZero method on its pointer only.
+type tZeroPtr struct{ A int }
+
+func (tzp *tZeroPtr) IsZero() bool { return tzp.A == 0 }

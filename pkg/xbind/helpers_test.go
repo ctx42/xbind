@@ -120,7 +120,7 @@ func Test_keyText_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := keyText(tc.key, tc.format)
+			have := keyText(tc.key, tc.format, nil)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)

@@ -15,6 +15,38 @@ import (
 	"github.com/ctx42/xrr/pkg/xrr/xrrtest"
 )
 
+func Test_decReg_get(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		// --- When ---
+		have := decReg(nil).get(reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+
+	t.Run("registered", func(t *testing.T) {
+		// --- Given ---
+		reg := decReg{reflect.TypeFor[int](): decInt}
+
+		// --- When ---
+		have := reg.get(reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.NotNil(t, have)
+	})
+
+	t.Run("not registered", func(t *testing.T) {
+		// --- Given ---
+		reg := decReg{reflect.TypeFor[int](): decInt}
+
+		// --- When ---
+		have := reg.get(reflect.TypeFor[string]())
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+}
+
 func Test_decFor(t *testing.T) {
 	type s struct{ F int }
 
@@ -167,6 +199,240 @@ func Test_decFor_tabular(t *testing.T) {
 			assert.Equal(t, tc.wVal, must.Value(have(tc.vls...)))
 		})
 	}
+}
+
+func Test_isBuiltin_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"bool", reflect.TypeFor[bool](), true},
+		{"string", reflect.TypeFor[string](), true},
+		{"int8", reflect.TypeFor[int8](), true},
+		{"uint64", reflect.TypeFor[uint64](), true},
+		{"float32", reflect.TypeFor[float32](), true},
+		{"named int", reflect.TypeFor[IntAlias](), true},
+		{"time", reflect.TypeFor[time.Time](), true},
+		{"duration", reflect.TypeFor[time.Duration](), true},
+		{"uintptr", reflect.TypeFor[uintptr](), false},
+		{"pointer", reflect.TypeFor[*int](), false},
+		{"slice", reflect.TypeFor[[]int](), false},
+		{"struct", reflect.TypeFor[struct{}](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isBuiltin(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_builtinSetter_tabular(t *testing.T) {
+	type tAll struct {
+		B   bool
+		I   int16
+		U   uint
+		F   float32
+		S   string
+		T   time.Time
+		D   time.Duration
+		N   IntAlias
+		P   *int
+		Sli []int
+	}
+	tim := time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	tt := []struct {
+		testN string
+
+		field string
+		vls   []string
+		want  any
+	}{
+		{"bool", "B", []string{"off"}, false},
+		{"int16", "I", []string{"-16"}, int16(-16)},
+		{"uint", "U", []string{"7"}, uint(7)},
+		{"float32", "F", []string{"0.5"}, float32(0.5)},
+		{"string", "S", []string{"x"}, "x"},
+		{"time", "T", []string{"2000-01-02T03:04:05Z"}, tim},
+		{"duration", "D", []string{"2s"}, 2 * time.Second},
+		{"named int", "N", []string{"9"}, IntAlias(9)},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			dst := reflect.ValueOf(&tAll{}).Elem().FieldByName(tc.field)
+			set := builtinSetter(dst.Type())
+
+			// --- When ---
+			err := set(dst, tc.vls)
+
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, dst.Interface())
+		})
+	}
+}
+
+func Test_builtinSetter(t *testing.T) {
+	t.Run("error - value", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F int8 }{F: 1}).Elem().Field(0)
+		set := builtinSetter(dst.Type())
+
+		// --- When ---
+		err := set(dst, []string{"300"})
+
+		// --- Then ---
+		want := "invalid value: cannot convert `300` to int8"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, int8(1), dst.Interface())
+	})
+
+	t.Run("not a built-in type", func(t *testing.T) {
+		// --- When ---
+		have := builtinSetter(reflect.TypeFor[*int]())
+
+		// --- Then ---
+		assert.Nil(t, have)
+	})
+}
+
+func Test_setBuiltin_tabular(t *testing.T) {
+	type tAll struct {
+		B   bool
+		I   int
+		I8  int8
+		U   uint
+		U16 uint16
+		F32 float32
+		F64 float64
+		S   string
+		T   time.Time
+		D   time.Duration
+		N   IntAlias
+	}
+	tim := time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	tt := []struct {
+		testN string
+
+		field string
+		vls   []string
+		want  any
+	}{
+		{"bool", "B", []string{"on"}, true},
+		{"int", "I", []string{"-1"}, -1},
+		{"int8", "I8", []string{"-8"}, int8(-8)},
+		{"uint", "U", []string{"1"}, uint(1)},
+		{"uint16", "U16", []string{"16"}, uint16(16)},
+		{"float32", "F32", []string{"1.5"}, float32(1.5)},
+		{"float64", "F64", []string{"2.5"}, 2.5},
+		{"string", "S", []string{"abc"}, "abc"},
+		{"time", "T", []string{"2000-01-02T03:04:05Z"}, tim},
+		{"duration", "D", []string{"1s"}, time.Second},
+		{"named int", "N", []string{"3"}, IntAlias(3)},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			dst := reflect.ValueOf(&tAll{}).Elem().FieldByName(tc.field)
+
+			// --- When ---
+			ok, err := setBuiltin(dst, tc.vls)
+
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.True(t, ok)
+			assert.Equal(t, tc.want, dst.Interface())
+		})
+	}
+}
+
+func Test_setBuiltin(t *testing.T) {
+	t.Run("error - value does not convert", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F uint8 }{F: 7}).Elem().Field(0)
+
+		// --- When ---
+		ok, err := setBuiltin(dst, []string{"256"})
+
+		// --- Then ---
+		assert.True(t, ok)
+		want := "invalid value: cannot convert `256` to uint8"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, uint8(7), dst.Interface())
+	})
+
+	t.Run("error - time", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F time.Time }{}).Elem().Field(0)
+
+		// --- When ---
+		ok, err := setBuiltin(dst, []string{"x"})
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.ErrorIs(t, ErrTimeFormat, err)
+		assert.Zero(t, dst.Interface())
+	})
+
+	t.Run("error - duration", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F time.Duration }{}).Elem().Field(0)
+
+		// --- When ---
+		ok, err := setBuiltin(dst, []string{"x"})
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.ErrorIs(t, ErrDurFormat, err)
+	})
+
+	t.Run("error - many values", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F string }{}).Elem().Field(0)
+
+		// --- When ---
+		ok, err := setBuiltin(dst, []string{"a", "b"})
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+		assert.Equal(t, "", dst.Interface())
+	})
+
+	t.Run("no built-in decoder", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F []int }{}).Elem().Field(0)
+
+		// --- When ---
+		ok, err := setBuiltin(dst, []string{"1"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, ok)
+	})
+
+	t.Run("does not allocate", func(t *testing.T) {
+		// --- Given ---
+		dst := reflect.ValueOf(&struct{ F time.Time }{}).Elem().Field(0)
+		vls := []string{"2000-01-02T03:04:05Z"}
+
+		// --- When ---
+		have := testing.AllocsPerRun(10, func() { _, _ = setBuiltin(dst, vls) })
+
+		// --- Then ---
+		assert.Equal(t, 0.0, have)
+	})
 }
 
 func Test_decBool(t *testing.T) {
@@ -1289,6 +1555,225 @@ func Test_decString(t *testing.T) {
 		assert.ErrorEqual(t, "require single value: received 2", err)
 		assert.ErrorIs(t, ErrReqSingleValue, err)
 		xrrtest.AssertCode(t, ECReqSingle, err)
+	})
+}
+
+func Test_parseBool_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		val  string
+		want bool
+	}{
+		{"on", "On", true},
+		{"off", "OFF", false},
+		{"true", "TRUE", true},
+		{"false", "0", false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have, err := parseBool([]string{tc.val})
+
+			// --- Then ---
+			assert.NoError(t, err)
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_parseBool(t *testing.T) {
+	t.Run("error - not a bool", func(t *testing.T) {
+		// --- When ---
+		have, err := parseBool([]string{"Yes"})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `Yes` to bool", err)
+		assert.False(t, have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseBool(nil)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+	})
+}
+
+func Test_parseInt(t *testing.T) {
+	t.Run("in range", func(t *testing.T) {
+		// --- When ---
+		have, err := parseInt([]string{"-128"}, reflect.Int8)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, int64(-128), have)
+	})
+
+	t.Run("error - out of range", func(t *testing.T) {
+		// --- When ---
+		have, err := parseInt([]string{"128"}, reflect.Int8)
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `128` to int8", err)
+		assert.Equal(t, int64(0), have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseInt(nil, reflect.Int)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+	})
+}
+
+func Test_parseUint(t *testing.T) {
+	t.Run("in range", func(t *testing.T) {
+		// --- When ---
+		have, err := parseUint([]string{"255"}, reflect.Uint8)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, uint64(255), have)
+	})
+
+	t.Run("error - out of range", func(t *testing.T) {
+		// --- When ---
+		have, err := parseUint([]string{"-1"}, reflect.Uint)
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid value: cannot convert `-1` to uint", err)
+		assert.Equal(t, uint64(0), have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseUint(nil, reflect.Uint)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+	})
+}
+
+func Test_parseFloat(t *testing.T) {
+	t.Run("float32", func(t *testing.T) {
+		// --- When ---
+		have, err := parseFloat([]string{"0.1"}, reflect.Float32)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, float64(float32(0.1)), have)
+	})
+
+	t.Run("error - not a number", func(t *testing.T) {
+		// --- When ---
+		have, err := parseFloat([]string{"x"}, reflect.Float64)
+
+		// --- Then ---
+		want := "invalid value: cannot convert `x` to float64"
+		assert.ErrorEqual(t, want, err)
+		assert.Equal(t, 0.0, have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseFloat(nil, reflect.Float64)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+	})
+}
+
+func Test_bitSize_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		kind reflect.Kind
+		want int
+	}{
+		{"int", reflect.Int, 0},
+		{"uint", reflect.Uint, 0},
+		{"int8", reflect.Int8, 8},
+		{"uint8", reflect.Uint8, 8},
+		{"int16", reflect.Int16, 16},
+		{"uint16", reflect.Uint16, 16},
+		{"int32", reflect.Int32, 32},
+		{"uint32", reflect.Uint32, 32},
+		{"float32", reflect.Float32, 32},
+		{"int64", reflect.Int64, 64},
+		{"uint64", reflect.Uint64, 64},
+		{"float64", reflect.Float64, 64},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := bitSize(tc.kind)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_parseTime(t *testing.T) {
+	t.Run("keeps the offset", func(t *testing.T) {
+		// --- When ---
+		have, err := parseTime([]string{"2000-01-02T03:04:05+01:00"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		_, off := have.Zone()
+		assert.Equal(t, 3600, off)
+	})
+
+	t.Run("error - offset hour over 23", func(t *testing.T) {
+		// --- When ---
+		have, err := parseTime([]string{"2000-01-02T03:04:05+24:00"})
+
+		// --- Then ---
+		want := "invalid RFC3339 time: `2000-01-02T03:04:05+24:00`"
+		assert.ErrorEqual(t, want, err)
+		assert.Zero(t, have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseTime(nil)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
+	})
+}
+
+func Test_parseDur(t *testing.T) {
+	t.Run("duration", func(t *testing.T) {
+		// --- When ---
+		have, err := parseDur([]string{"1m"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, time.Minute, have)
+	})
+
+	t.Run("error - not a duration", func(t *testing.T) {
+		// --- When ---
+		have, err := parseDur([]string{"x"})
+
+		// --- Then ---
+		assert.ErrorEqual(t, "invalid duration string: `x`", err)
+		assert.Equal(t, time.Duration(0), have)
+	})
+
+	t.Run("error - no value", func(t *testing.T) {
+		// --- When ---
+		_, err := parseDur(nil)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrReqSingleValue, err)
 	})
 }
 

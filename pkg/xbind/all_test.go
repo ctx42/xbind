@@ -47,3 +47,14 @@ func decPoint(s string) (TPoint, error) {
 func encPoint(pnt TPoint) (string, error) {
 	return fmt.Sprintf("%d,%d", pnt.X, pnt.Y), nil
 }
+
+// noSetters returns a copy of the steps without their set functions and the
+// field types that go with them, which equality cannot compare.
+func noSetters(steps []step) []step {
+	out := make([]step, len(steps))
+	for i, stp := range steps {
+		stp.set, stp.ftyp = nil, nil
+		out[i] = stp
+	}
+	return out
+}

@@ -286,6 +286,18 @@ func Test_encString(t *testing.T) {
 	})
 }
 
+func Test_encTime(t *testing.T) {
+	// --- Given ---
+	tim := time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)
+
+	// --- When ---
+	have, err := encTime(reflect.ValueOf(tim))
+
+	// --- Then ---
+	assert.NoError(t, err)
+	assert.Equal(t, "2000-01-02T03:04:05Z", have)
+}
+
 func Test_encDur(t *testing.T) {
 	t.Run("duration", func(t *testing.T) {
 		// --- When ---

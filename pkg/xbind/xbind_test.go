@@ -302,7 +302,7 @@ func Test_newLevel_tabular(t *testing.T) {
 				b string
 			}](),
 			map[string][]int{},
-			map[string]bool{"A": true},
+			map[string]bool{"A": true, "b": false},
 		},
 		{
 			"ignored name another field takes",
@@ -311,7 +311,7 @@ func Test_newLevel_tabular(t *testing.T) {
 				B string `url:"A"`
 			}](),
 			map[string][]int{"A": {1}},
-			map[string]bool{},
+			map[string]bool{"A": false},
 		},
 	}
 
@@ -321,8 +321,14 @@ func Test_newLevel_tabular(t *testing.T) {
 			have := newLevel(tc.typ, "url")
 
 			// --- Then ---
-			assert.Equal(t, tc.wVis, have.vis)
-			assert.Equal(t, tc.wIgn, have.ign)
+			assert.Equal(t, len(tc.wVis), have.nms.Len())
+			for name, want := range tc.wVis {
+				idx, _ := have.nms.Field(name)
+				assert.Equal(t, want, idx)
+			}
+			for name, want := range tc.wIgn {
+				assert.Equal(t, want, have.nms.IsIgnored(name))
+			}
 			assert.Nil(t, have.idx)
 		})
 	}
@@ -344,7 +350,7 @@ func Test_level_names_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- Given ---
-			lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+			lvl := newLevel(reflect.TypeFor[TAmbig](), "url").embedded(0)
 
 			// --- When ---
 			have := lvl.names(tc.name, tc.i)
@@ -357,13 +363,13 @@ func Test_level_names_tabular(t *testing.T) {
 
 func Test_level_embedded(t *testing.T) {
 	// --- Given ---
-	lvl := level{vis: map[string][]int{"a": {0, 1}}, idx: []int{0}}
+	lvl := newLevel(reflect.TypeFor[TAmbig](), "url").embedded(0)
 
 	// --- When ---
 	have := lvl.embedded(1)
 
 	// --- Then ---
 	assert.Equal(t, []int{0, 1}, have.idx)
-	assert.Same(t, lvl.vis, have.vis)
+	assert.Same(t, lvl.nms, have.nms)
 	assert.Equal(t, []int{0}, lvl.idx)
 }

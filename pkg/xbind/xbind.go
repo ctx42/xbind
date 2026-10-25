@@ -260,110 +260,24 @@ func checkTags(
 // one set of keys: the dst or src struct, or a struct reached by a key
 // segment, together with the structs it embeds.
 type level struct {
-	vis map[string][]int // Index path of the field each key names.
-	ign map[string]bool  // Keys naming only ignored fields.
-	idx []int            // Index path of the struct in the level.
+	nms *mirror.Names // The names of the keys of the level.
+	idx []int         // Index path of the struct in the level.
 }
 
 // newLevel returns the level of the typ struct for the key struct tag. A key
-// names the field Go promotion selects, as [encoding/json] does: the shallowest
-// field with that name or, among equally shallow ones, the only one whose
-// struct tag names it; when there is no such field, the key names none. Ignored
-// and unexported fields name no key, embedded interfaces are skipped and
-// embedded structs walked; the names of ignored fields that no other field
-// takes or shares are recorded as ignored keys. A struct type met at a
-// shallower depth is not walked again, so a recursive type ends.
+// names the field Go promotion selects, as [encoding/json] does (see
+// [mirror.Names]).
 func newLevel(typ reflect.Type, key string) level {
-	type node struct {
-		typ reflect.Type // Struct type to walk.
-		idx []int        // Its index path in the level.
-	}
-	type cand struct {
-		idx    []int // Index path of the field.
-		tagged bool  // The struct tag names the field.
-	}
-
-	vis := make(map[string][]int)
-	ign := make(map[string]bool)
-	done := make(map[string]bool)       // Keys decided at a shallower depth.
-	seen := make(map[reflect.Type]bool) // Struct types of shallower depths.
-	for next := []node{{typ: typ}}; len(next) > 0; {
-		cur := next
-		next = nil
-		cands := make(map[string][]cand)
-		walked := make(map[reflect.Type]bool)
-		for _, nod := range cur {
-			md := mirror.ReflectType(nod.typ)
-			if seen[md.Type()] {
-				continue
-			}
-			walked[md.Type()] = true
-			for i, fld := range md.Fields() {
-				tag, _ := fld.Tag(key) // The caller checked the tags.
-				if tag.IsIgnored() {
-					// An ignored embedded struct names no key of its own.
-					if !fld.IsAnonymous() ||
-						indirect(fld.Type()).Kind() != reflect.Struct {
-
-						ign[tag.NameOrField()] = true
-					}
-					continue
-				}
-				idx := append(slices.Clip(nod.idx), i)
-				if fld.IsAnonymous() {
-					if fld.IsInterface() {
-						continue
-					}
-					if indirect(fld.Type()).Kind() == reflect.Struct {
-						next = append(next, node{typ: fld.Type(), idx: idx})
-						continue
-					}
-				}
-				if !fld.IsExported() {
-					continue
-				}
-				raw := fld.StructField().Tag.Get(key)
-				tagged := raw != "" && !strings.HasPrefix(raw, ",")
-				name := tag.NameOrField()
-				cands[name] = append(cands[name], cand{idx, tagged})
-			}
-		}
-		for wtp := range walked {
-			seen[wtp] = true
-		}
-		for name, cds := range cands {
-			if done[name] {
-				continue
-			}
-			done[name] = true
-			if len(cds) == 1 {
-				vis[name] = cds[0].idx
-				continue
-			}
-			var tagged []cand
-			for _, cnd := range cds {
-				if cnd.tagged {
-					tagged = append(tagged, cnd)
-				}
-			}
-			if len(tagged) == 1 {
-				vis[name] = tagged[0].idx
-			}
-		}
-	}
-	for name := range done {
-		delete(ign, name) // A key some field takes, or several fields share.
-	}
-	return level{vis: vis, ign: ign}
+	return level{nms: mirror.ReflectType(typ).Names(key)}
 }
 
 // names returns true if the key name names field i of the struct at the
 // level position.
 func (lvl level) names(name string, i int) bool {
-	return slices.Equal(lvl.vis[name], append(slices.Clip(lvl.idx), i))
+	return lvl.nms.Selects(name, lvl.idx, i)
 }
 
 // embedded returns the level position of the struct embedded as field i.
 func (lvl level) embedded(i int) level {
-	return level{vis: lvl.vis, idx: append(slices.Clip(lvl.idx), i)}
+	return level{nms: lvl.nms, idx: append(slices.Clip(lvl.idx), i)}
 }

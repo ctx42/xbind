@@ -19,6 +19,9 @@ type encReg map[reflect.Type]encFn
 // to, or nil when none is registered. The encoder for a pointer type must not
 // be called with a nil pointer.
 func (reg encReg) lookup(typ reflect.Type) encFn {
+	if len(reg) == 0 {
+		return nil // Answered without hashing the type.
+	}
 	if efn, ok := reg[typ]; ok {
 		return efn
 	}
@@ -38,8 +41,10 @@ func (reg encReg) lookup(typ reflect.Type) encFn {
 //
 //nolint:cyclop
 func encFor(typ reflect.Type, reg encReg) encFn {
-	if f, ok := reg[typ]; ok {
-		return f
+	if len(reg) > 0 {
+		if f, ok := reg[typ]; ok {
+			return f
+		}
 	}
 
 	if typ == typDur {
@@ -120,6 +125,14 @@ func encFloat64(v reflect.Value) (string, error) {
 // It panics if the kind of v is not String.
 func encString(v reflect.Value) (string, error) {
 	return v.String(), nil
+}
+
+// encTime encodes a [time.Time] [reflect.Value] to a string, as its
+// MarshalText method does, but in UTC when its offset has seconds (see
+// marshalString). It panics if v does not hold a time.Time.
+func encTime(v reflect.Value) (string, error) {
+	tim, _ := reflect.TypeAssert[time.Time](v)
+	return timeString(tim)
 }
 
 // encDur encodes a [time.Duration] [reflect.Value] to a string.

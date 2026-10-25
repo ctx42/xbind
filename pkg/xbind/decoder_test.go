@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1943,6 +1944,27 @@ func Test_Decoder_Decode(t *testing.T) {
 		assert.Len(t, 0, dst.M)
 	})
 
+	t.Run("error - conflict among many keys", func(t *testing.T) {
+		// --- Given ---
+		dst := &TBox{}
+		src := url.Values{"attr[a]": {"1"}, "attr.a": {"2"}}
+		for i := range 20 {
+			src["list["+strconv.Itoa(i)+"].size"] = []string{strconv.Itoa(i)}
+		}
+
+		// --- When ---
+		err := NewDecoder().Decode(dst, src)
+
+		// --- Then ---
+		want := "" +
+			"attr[a]: invalid value: " +
+			"another key sets the value (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Equal(t, map[string]string{"a": "2"}, dst.Attr)
+		assert.Len(t, 20, dst.List)
+		assert.Equal(t, 19, dst.List[19].Size)
+	})
+
 	t.Run("error - negative zero map key", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -3130,6 +3152,603 @@ func Test_Decoder_depthLimit(t *testing.T) {
 	})
 }
 
+func Test_fieldErrors(t *testing.T) {
+	t.Run("nil", func(t *testing.T) {
+		// --- When ---
+		err := fieldErrors(nil, false)
+
+		// --- Then ---
+		assert.NoError(t, err)
+	})
+
+	t.Run("not nested", func(t *testing.T) {
+		// --- Given ---
+		ers := xrr.NewFieldErrors(map[string]error{"a": errTest})
+
+		// --- When ---
+		err := fieldErrors(ers, false)
+
+		// --- Then ---
+		assert.Same(t, ers, err)
+	})
+
+	t.Run("nested", func(t *testing.T) {
+		// --- Given ---
+		empty := xrr.NewFieldErrors(map[string]error{})
+		ers := xrr.NewFieldErrors(map[string]error{"a": errTest, "b": empty})
+
+		// --- When ---
+		err := fieldErrors(ers, true)
+
+		// --- Then ---
+		assert.Equal(t, map[string]error{"a": errTest}, xrr.GetFields(err))
+	})
+}
+
+// tFast is a struct for the field-driven decode tests.
+type tFast struct {
+	A   int            `url:"a"`
+	P   *int           `url:"p"`
+	L   TLevel         `url:"l"`
+	S   []string       `url:"s"`
+	In  TItem          `url:"in"`
+	Dot int            `url:"x.y"`
+	Ptr *TItem         `url:"ptr"`
+	M   map[string]int `url:"m"`
+}
+
+func Test_Decoder_decodeFast(t *testing.T) {
+	t.Run("decodes", func(t *testing.T) {
+		// --- Given ---
+		dst := &tFast{}
+		src := url.Values{
+			"a":       {"1"},
+			"p":       {"2"},
+			"l":       {"2"},
+			"s":       {"x", "y"},
+			"in.size": {"3"},
+			"[x.y]":   {"4"},
+		}
+
+		// --- When ---
+		ok, err := NewDecoder().decodeFast(reflect.ValueOf(dst).Elem(), src)
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.NoError(t, err)
+		assert.Equal(t, 1, dst.A)
+		assert.Equal(t, 2, *dst.P)
+		assert.Equal(t, TLevel(2), dst.L)
+		assert.Equal(t, []string{"x", "y"}, dst.S)
+		assert.Equal(t, 3, dst.In.Size)
+		assert.Equal(t, 4, dst.Dot)
+	})
+
+	t.Run("errors", func(t *testing.T) {
+		// --- Given ---
+		dst := &tFast{}
+		src := url.Values{"a": {"x"}, "p": {"y"}, "in.name": {"n"}}
+
+		// --- When ---
+		ok, err := NewDecoder().decodeFast(reflect.ValueOf(dst).Elem(), src)
+
+		// --- Then ---
+		assert.True(t, ok)
+		want := "" +
+			"a: invalid value: cannot convert `x` to int (ECInvValue); " +
+			"p: invalid value: cannot convert `y` to int (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Nil(t, dst.P) // A failing key changes nothing.
+		assert.Equal(t, "n", dst.In.Name)
+	})
+
+	t.Run("many fields for few keys", func(t *testing.T) {
+		// --- Given ---
+		dst := &TFuzzDec{}
+		src := url.Values{"f_str": {"a"}}
+
+		// --- When ---
+		ok, err := NewDecoder().decodeFast(reflect.ValueOf(dst).Elem(), src)
+
+		// --- Then ---
+		assert.False(t, ok)
+		assert.NoError(t, err)
+	})
+}
+
+func Test_Decoder_decodeFast_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		key string
+	}{
+		{"through a pointer", "ptr.size"},
+		{"map entry", "m[k]"},
+		{"other spelling", "[a]"},
+		{"struct", "in"},
+		{"unknown", "unknown"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			dst := &tFast{}
+			src := url.Values{"a": {"1"}, tc.key: {"2"}}
+
+			// --- When ---
+			ok, err := NewDecoder().decodeFast(reflect.ValueOf(dst).Elem(), src)
+
+			// --- Then ---
+			assert.False(t, ok)
+			assert.NoError(t, err)
+			assert.Equal(t, tFast{}, *dst) // Nothing changed.
+		})
+	}
+}
+
+func Test_Decoder_fastFields(t *testing.T) {
+	t.Run("fields", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder()
+
+		// --- When ---
+		have := dec.fastFields(reflect.TypeFor[tFast]())
+
+		// --- Then ---
+		keys := map[string][]int{}
+		for _, ff := range have {
+			keys[ff.key] = ff.idx
+		}
+		want := map[string][]int{
+			"a":       {0},
+			"p":       {1},
+			"l":       {2},
+			"s":       {3},
+			"in.size": {4, 0},
+			"in.name": {4, 1},
+			"[x.y]":   {5},
+		}
+		assert.Equal(t, want, keys)
+	})
+
+	t.Run("cached", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder()
+		want := dec.fastFields(reflect.TypeFor[tFast]())
+
+		// --- When ---
+		have := dec.fastFields(reflect.TypeFor[tFast]())
+
+		// --- Then ---
+		assert.Same(t, &want[0], &have[0])
+	})
+}
+
+func Test_Decoder_fastIn(t *testing.T) {
+	t.Run("depth limit", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder(WithDecMaxDepth(1))
+
+		// --- When ---
+		have := dec.fastIn(reflect.TypeFor[tFast](), "", nil, 0, nil)
+
+		// --- Then ---
+		for _, ff := range have {
+			assert.Len(t, 1, ff.idx) // No in.size, two steps deep.
+		}
+		assert.Len(t, 5, have)
+	})
+
+	t.Run("embedded value struct", func(t *testing.T) {
+		// --- Given ---
+		type T struct {
+			TItem
+			B int `url:"b"`
+		}
+
+		// --- When ---
+		have := NewDecoder().fastIn(reflect.TypeFor[T](), "", nil, 0, nil)
+
+		// --- Then ---
+		assert.Len(t, 3, have)
+	})
+
+	t.Run("embedded pointer", func(t *testing.T) {
+		// --- Given ---
+		type T struct {
+			*TItem
+			B int `url:"b"`
+		}
+
+		// --- When ---
+		have := NewDecoder().fastIn(reflect.TypeFor[T](), "", nil, 0, nil)
+
+		// --- Then ---
+		assert.Len(t, 1, have)
+		assert.Equal(t, "b", have[0].key)
+	})
+}
+
+func Test_valuePath_tabular(t *testing.T) {
+	type tPtr struct{ *TItem }
+	type tVal struct{ TItem }
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		idx  []int
+		want bool
+	}{
+		{"field", reflect.TypeFor[TItem](), []int{0}, true},
+		{"through value", reflect.TypeFor[tVal](), []int{0, 0}, true},
+		{"through pointer", reflect.TypeFor[tPtr](), []int{0, 0}, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := valuePath(tc.typ, tc.idx)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Decoder_direct_tabular(t *testing.T) {
+	type tEmb struct {
+		E int `url:"e"`
+	}
+	type T struct {
+		tEmb
+		A int            `url:"a"`
+		M map[string]int `url:"m"`
+		S []int          `url:"s"`
+		D int            `url:"x.y"`
+	}
+
+	tt := []struct {
+		testN string
+
+		dec  *Decoder
+		key  string
+		want []int
+	}{
+		{"leaf field", NewDecoder(), "a", []int{1}},
+		{"slice field", NewDecoder(), "s", []int{3}},
+		{"map field", NewDecoder(), "m", nil},
+		{"promoted field", NewDecoder(), "e", nil},
+		{"unknown field", NewDecoder(), "b", nil},
+		{"dotted key", NewDecoder(), "x.y", nil},
+		{"bracketed key", NewDecoder(), "[a]", nil},
+		{"empty key", NewDecoder(), "", nil},
+		{"depth limit 0", NewDecoder(WithDecMaxDepth(0)), "a", nil},
+		{"depth limit 1", NewDecoder(WithDecMaxDepth(1)), "a", []int{1}},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			stt := newState()
+			stt.tc = tc.dec.cache
+
+			// --- When ---
+			have, ok := tc.dec.direct(reflect.TypeFor[T](), tc.key, stt)
+
+			// --- Then ---
+			assert.Equal(t, tc.want != nil, ok)
+			assert.Equal(t, tc.want, have.idx)
+		})
+	}
+}
+
+func Test_Decoder_mapFactsOf_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"string to int", reflect.TypeFor[map[string]int](), true},
+		{"int to time", reflect.TypeFor[map[int]time.Time](), true},
+		{"float keys", reflect.TypeFor[map[float64]int](), false},
+		{"struct values", reflect.TypeFor[map[string]TItem](), false},
+		{"pointer values", reflect.TypeFor[map[string]*int](), false},
+		{"unmarshaler values", reflect.TypeFor[map[string]TTextPtr](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewDecoder().mapFactsOf(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have != nil)
+		})
+	}
+}
+
+func Test_Decoder_directMap(t *testing.T) {
+	type T struct {
+		M  map[string]int   `url:"m"`
+		MI map[int]string   `url:"mi"`
+		MS map[string]TItem `url:"ms"`
+	}
+
+	t.Run("sets the entry", func(t *testing.T) {
+		// --- Given ---
+		dst := &T{}
+		dec := NewDecoder()
+		stt := dec.state()
+		stt.track = false
+		val := reflect.ValueOf(dst).Elem()
+
+		// --- When ---
+		ok, err := dec.directMap(val, "m[a]", []string{"1"}, stt)
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]int{"a": 1}, dst.M)
+	})
+
+	t.Run("adds to the map", func(t *testing.T) {
+		// --- Given ---
+		dst := &T{MI: map[int]string{1: "x"}}
+		dec := NewDecoder()
+		stt := dec.state()
+		stt.track = false
+		val := reflect.ValueOf(dst).Elem()
+
+		// --- When ---
+		ok, err := dec.directMap(val, "mi[2]", []string{"y"}, stt)
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.NoError(t, err)
+		assert.Equal(t, map[int]string{1: "x", 2: "y"}, dst.MI)
+	})
+
+	t.Run("error - value", func(t *testing.T) {
+		// --- Given ---
+		dst := &T{}
+		dec := NewDecoder()
+		stt := dec.state()
+		stt.track = false
+		val := reflect.ValueOf(dst).Elem()
+
+		// --- When ---
+		ok, err := dec.directMap(val, "m[a]", []string{"x"}, stt)
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.Nil(t, dst.M)
+	})
+
+	t.Run("error - key", func(t *testing.T) {
+		// --- Given ---
+		dst := &T{}
+		dec := NewDecoder()
+		stt := dec.state()
+		stt.track = false
+		val := reflect.ValueOf(dst).Elem()
+
+		// --- When ---
+		ok, err := dec.directMap(val, "mi[x]", []string{"y"}, stt)
+
+		// --- Then ---
+		assert.True(t, ok)
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.Nil(t, dst.MI)
+	})
+
+	t.Run("tracked paths", func(t *testing.T) {
+		// --- Given ---
+		dst := &T{}
+		dec := NewDecoder()
+		stt := dec.state()
+
+		// --- When ---
+		val := reflect.ValueOf(dst).Elem()
+		ok, err := dec.directMap(val, "m[a]", []string{"1"}, stt)
+
+		// --- Then ---
+		assert.False(t, ok)
+		assert.NoError(t, err)
+	})
+}
+
+func Test_Decoder_directMap_tabular(t *testing.T) {
+	type T struct {
+		M  map[string]int   `url:"m"`
+		MI map[int]string   `url:"mi"`
+		MS map[string]TItem `url:"ms"`
+	}
+
+	tt := []struct {
+		testN string
+
+		key string
+	}{
+		{"other key text", "mi[01]"},
+		{"dotted", "m.a"},
+		{"more segments", "m[a].b"},
+		{"empty key", "m[]"},
+		{"bracketed field", "[m][a]"},
+		{"struct values", "ms[a]"},
+		{"unknown field", "x[a]"},
+		{"no key", "m"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			dst := &T{}
+			dec := NewDecoder()
+			stt := dec.state()
+			stt.track = false
+			val := reflect.ValueOf(dst).Elem()
+
+			// --- When ---
+			ok, err := dec.directMap(val, tc.key, []string{"1"}, stt)
+
+			// --- Then ---
+			assert.False(t, ok)
+			assert.NoError(t, err)
+			assert.Equal(t, T{}, *dst)
+		})
+	}
+}
+
+func Test_Decoder_state(t *testing.T) {
+	t.Run("no pool", func(t *testing.T) {
+		// --- Given ---
+		dec := &Decoder{cache: &typeCache{}}
+
+		// --- When ---
+		have := dec.state()
+
+		// --- Then ---
+		assert.Same(t, dec.cache, have.tc)
+		assert.True(t, have.track)
+		assert.Equal(t, math.MaxInt, have.budget)
+	})
+
+	t.Run("from the pool", func(t *testing.T) {
+		// --- Given ---
+		dec := NewDecoder()
+		stt := newState()
+		dec.pool.Put(stt)
+
+		// --- When ---
+		have := dec.state()
+
+		// --- Then ---
+		assert.Same(t, dec.cache, have.tc)
+	})
+
+	t.Run("state of another cache", func(t *testing.T) {
+		// --- Given ---
+		dec := &Decoder{cache: &typeCache{}, pool: &sync.Pool{}}
+		stt := newState()
+		stt.tc = &typeCache{}
+		stt.ftyp[0], stt.ltyp = reflect.TypeFor[TBox](), reflect.TypeFor[int]()
+		dec.pool.New = func() any { return stt }
+
+		// --- When ---
+		have := dec.state()
+
+		// --- Then ---
+		assert.Same(t, dec.cache, have.tc)
+		assert.Nil(t, have.ftyp[0])
+		assert.Nil(t, have.ltyp)
+	})
+}
+
+func Test_Decoder_release(t *testing.T) {
+	t.Run("clears the state", func(t *testing.T) {
+		// --- Given ---
+		dec := &Decoder{pool: &sync.Pool{}}
+		stt := newState()
+		stt.mark("a", pathSet)
+
+		// --- When ---
+		dec.release(stt)
+
+		// --- Then ---
+		assert.Len(t, 0, stt.paths) // Cleared for the pool, which may drop it.
+	})
+
+	t.Run("no pool", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.mark("a", pathSet)
+
+		// --- When ---
+		(&Decoder{}).release(stt)
+
+		// --- Then ---
+		assert.Len(t, 1, stt.paths)
+	})
+
+	t.Run("large state", func(t *testing.T) {
+		// --- Given ---
+		dec := &Decoder{pool: &sync.Pool{}}
+		stt := newState()
+		for i := range poolLimit + 1 {
+			stt.mark(strconv.Itoa(i), pathSet)
+		}
+
+		// --- When ---
+		dec.release(stt)
+
+		// --- Then ---
+		assert.Len(t, poolLimit+1, stt.paths)
+		assert.Nil(t, dec.pool.Get())
+	})
+}
+
+func Test_Decoder_hasChecks_tabular(t *testing.T) {
+	type tPlain struct {
+		A int
+		B []string
+	}
+	type tReq struct {
+		A int `url:"a,required"`
+	}
+	type tPres struct {
+		A int `url:"a,present"`
+	}
+	type tIgnored struct {
+		A int `url:"-"`
+	}
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"plain fields", reflect.TypeFor[tPlain](), false},
+		{"required", reflect.TypeFor[tReq](), true},
+		{"present", reflect.TypeFor[tPres](), true},
+		{"ignored field", reflect.TypeFor[tIgnored](), false},
+		{"nested pointer", reflect.TypeFor[struct{ P *tReq }](), true},
+		{"in a map", reflect.TypeFor[struct{ M map[string]tReq }](), true},
+		{"in a slice", reflect.TypeFor[struct{ S []*tPres }](), true},
+		{"embedded", reflect.TypeFor[struct{ tReq }](), true},
+		{"recursive", reflect.TypeFor[TNode](), true},
+		{"recursive without checks", reflect.TypeFor[TCycle](), false},
+		{"not a struct", reflect.TypeFor[int](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewDecoder().hasChecks(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Decoder_checksIn(t *testing.T) {
+	// --- Given ---
+	type tReq struct {
+		A int `url:"a,required"`
+	}
+	seen := map[reflect.Type]bool{reflect.TypeFor[tReq](): true}
+
+	// --- When ---
+	have := NewDecoder().checksIn(reflect.TypeFor[[]tReq](), seen)
+
+	// --- Then ---
+	assert.False(t, have)
+}
+
 func Test_parseKey_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
@@ -3137,19 +3756,27 @@ func Test_parseKey_tabular(t *testing.T) {
 		key  string
 		want []segment
 	}{
-		{"name", "a", []segment{{text: "a"}}},
-		{"dotted", "a.b", []segment{{text: "a"}, {text: "b"}}},
+		{"name", "a", []segment{{text: "a", end: 1}}},
+		{
+			"dotted",
+			"a.b",
+			[]segment{{text: "a", end: 1}, {text: "b", end: 3}},
+		},
 		{
 			"brackets",
 			"a[b.c][0].d",
 			[]segment{
-				{text: "a"},
-				{text: "b.c", bracket: true},
-				{text: "0", bracket: true},
-				{text: "d"},
+				{text: "a", end: 1},
+				{text: "b.c", bracket: true, end: 6},
+				{text: "0", bracket: true, end: 9},
+				{text: "d", end: 11},
 			},
 		},
-		{"leading bracket", "[a.b]", []segment{{text: "a.b", bracket: true}}},
+		{
+			"leading bracket",
+			"[a.b]",
+			[]segment{{text: "a.b", bracket: true, end: 5}},
+		},
 		{"empty", "", nil},
 		{"leading dot", ".a", nil},
 		{"trailing dot", "a.", nil},
@@ -3165,7 +3792,7 @@ func Test_parseKey_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have, ok := parseKey(tc.key)
+			have, ok := parseKey(tc.key, nil)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
@@ -3174,53 +3801,123 @@ func Test_parseKey_tabular(t *testing.T) {
 	}
 }
 
+func Test_isKeyMark_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		b    byte
+		want bool
+	}{
+		{"dot", '.', true},
+		{"opening bracket", '[', true},
+		{"closing bracket", ']', true},
+		{"letter", 'a', false},
+		{"digit", '0', false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isKeyMark(tc.b)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_step_path_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		stp  step
+		pth  string
+		txt  string
+		want string
+	}{
+		{"field", step{kind: stepField, name: "b"}, "a", "", "a.b"},
+		{"first field", step{kind: stepField, name: "b"}, "", "", "b"},
+		{
+			"field with dot",
+			step{kind: stepField, name: "b.c"},
+			"a",
+			"",
+			"a[b.c]",
+		},
+		{"map entry", step{kind: stepKey, key: "01"}, "m", "1", "m[1]"},
+		{"index", step{kind: stepIndex, pos: 3}, "l", "", "l[3]"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := tc.stp.path(tc.pth, tc.txt)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_Decoder_plan(t *testing.T) {
 	t.Run("steps", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TBox]()
-		segs, _ := parseKey("nest[a][1].size")
+		segs, _ := parseKey("nest[a][1].size", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
 		want := []step{
-			{kind: stepField, idx: []int{5}, name: "nest"},
-			{kind: stepKey, key: "a", name: "[a]"},
-			{kind: stepIndex, pos: 1, name: "[1]"},
-			{kind: stepField, idx: []int{0}, name: "size"},
+			{kind: stepField, idx: []int{5}, name: "nest", unm: unmNo, end: 4},
+			{kind: stepKey, key: "a", end: 7},
+			{kind: stepIndex, pos: 1, end: 10},
+			{kind: stepField, idx: []int{0}, name: "size", unm: unmNo, end: 15},
 		}
-		assert.Equal(t, want, have)
+		assert.Equal(t, want, noSetters(have))
+		assert.Nil(t, have[0].set)
+		assert.NotNil(t, have[3].set)
+		assert.Equal(t, reflect.TypeFor[int](), have[3].ftyp)
 	})
 
 	t.Run("embedded field", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TFuzzDec]()
-		segs, _ := parseKey("f_str")
+		segs, _ := parseKey("f_str", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
-		want := []step{{kind: stepField, idx: []int{0, 0}, name: "f_str"}}
-		assert.Equal(t, want, have)
+		want := []step{
+			{
+				kind: stepField,
+				idx:  []int{0, 0},
+				name: "f_str",
+				unm:  unmNo,
+				end:  5,
+			},
+		}
+		assert.Equal(t, want, noSetters(have))
+		assert.NotNil(t, have[0].set)
 	})
 
 	t.Run("rest of the key for a map of plain values", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TBox]()
-		segs, _ := parseKey("attr.a.b")
+		segs, _ := parseKey("attr.a.b", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.NoError(t, err)
 		want := []step{
-			{kind: stepField, idx: []int{7}, name: "attr"},
-			{kind: stepKey, key: "a.b", name: "[a.b]"},
+			{kind: stepField, idx: []int{7}, name: "attr", unm: unmNo, end: 4},
+			{kind: stepKey, key: "a.b"},
 		}
 		assert.Equal(t, want, have)
 	})
@@ -3228,10 +3925,10 @@ func Test_Decoder_plan(t *testing.T) {
 	t.Run("error - bracket in the rest of a map key", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TBox]()
-		segs, _ := parseKey("attr.a[b]")
+		segs, _ := parseKey("attr.a[b]", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -3241,10 +3938,10 @@ func Test_Decoder_plan(t *testing.T) {
 	t.Run("error - ignored field", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TFuzzDec]()
-		segs, _ := parseKey("Ign")
+		segs, _ := parseKey("Ign", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, errIgnored, err)
@@ -3254,10 +3951,10 @@ func Test_Decoder_plan(t *testing.T) {
 	t.Run("error - segment after a value", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TBox]()
-		segs, _ := parseKey("attr[k].x")
+		segs, _ := parseKey("attr[k].x", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -3267,10 +3964,11 @@ func Test_Decoder_plan(t *testing.T) {
 	t.Run("error - over the depth limit", func(t *testing.T) {
 		// --- Given ---
 		typ := reflect.TypeFor[TBox]()
-		segs, _ := parseKey("nest[a][1].size")
+		segs, _ := parseKey("nest[a][1].size", nil)
+		dec := NewDecoder(WithDecMaxDepth(3))
 
 		// --- When ---
-		have, err := NewDecoder(WithDecMaxDepth(3)).plan(typ, segs, newState())
+		have, err := dec.plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		want := "invalid value: key depth over the limit 3"
@@ -3284,10 +3982,10 @@ func Test_Decoder_plan(t *testing.T) {
 		typ := reflect.TypeFor[struct {
 			F any `url:"f"`
 		}]()
-		segs, _ := parseKey("f.x")
+		segs, _ := parseKey("f.x", nil)
 
 		// --- When ---
-		have, err := NewDecoder().plan(typ, segs, newState())
+		have, err := NewDecoder().plan(typ, segs, nil, newState())
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnkFieldPath, err)
@@ -3391,41 +4089,359 @@ func Test_newState(t *testing.T) {
 	have := newState()
 
 	// --- Then ---
-	assert.NotNil(t, have.reset)
-	assert.Len(t, 0, have.reset)
+	assert.NotNil(t, have.paths)
+	assert.Len(t, 0, have.paths)
 	assert.Nil(t, have.log)
 	assert.NotNil(t, have.entries)
 	assert.Len(t, 0, have.entries)
 	assert.NotNil(t, have.keyed)
 	assert.Len(t, 0, have.keyed)
-	assert.NotNil(t, have.maps)
-	assert.Len(t, 0, have.maps)
-	assert.NotNil(t, have.failed)
-	assert.Len(t, 0, have.failed)
-	assert.NotNil(t, have.set)
-	assert.Len(t, 0, have.set)
-	assert.NotNil(t, have.indexed)
-	assert.Len(t, 0, have.indexed)
-	assert.NotNil(t, have.reached)
-	assert.Len(t, 0, have.reached)
 	assert.Equal(t, math.MaxInt, have.budget)
-	assert.NotNil(t, have.levels)
-	assert.Len(t, 0, have.levels)
+	assert.True(t, have.track)
+	assert.Nil(t, have.tc)
+	assert.Equal(t, "", have.key)
+	assert.False(t, have.off)
+}
+
+func Test_state_has_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		pth  string
+		flag pathFlag
+		want bool
+	}{
+		{"flag", "a", pathSet, true},
+		{"one of the flags", "a", pathIndexed | pathReset, true},
+		{"other flag", "a", pathIndexed, false},
+		{"other path", "b", pathSet, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			stt := newState()
+			stt.paths["a"] = pathSet | pathReset
+
+			// --- When ---
+			have := stt.has(tc.pth, tc.flag)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_state_mark(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	stt.mark("a", pathSet)
+
+	// --- When ---
+	stt.mark("a", pathFailed)
+
+	// --- Then ---
+	assert.Equal(t, map[string]pathFlag{"a": pathSet | pathFailed}, stt.paths)
+}
+
+func Test_state_reach(t *testing.T) {
+	t.Run("tracked", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+
+		// --- When ---
+		stt.reach("a")
+
+		// --- Then ---
+		assert.Equal(t, map[string]pathFlag{"a": pathReached}, stt.paths)
+	})
+
+	t.Run("not tracked", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.track = false
+
+		// --- When ---
+		stt.reach("a")
+
+		// --- Then ---
+		assert.Len(t, 0, stt.paths)
+	})
+}
+
+func Test_state_clear(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	dst := reflect.ValueOf(&struct{ F int }{F: 1}).Elem().Field(0)
+	stt.markReset("a", dst)
+	stt.entries[entryID{pth: "a", key: "k"}] = mapEntry{text: "k"}
+	stt.keyed["a"] = []entryID{{pth: "a", key: "k"}}
+	stt.mark("b", pathSet)
+	stt.budget = 3
+	stt.track = false
+	tc := &typeCache{}
+	stt.tc = tc
+	stt.src = url.Values{"a": {"1"}}
+	stt.key, stt.off, stt.alias = "a", true, true
+	stt.keys = append(stt.keys, "a")
+	stt.ftyp[0], stt.ltyp = reflect.TypeFor[TBox](), reflect.TypeFor[int]()
+
+	// --- When ---
+	stt.clear()
+
+	// --- Then ---
+	assert.Len(t, 0, stt.paths)
+	assert.Len(t, 0, stt.log)
+	assert.Equal(t, resetLog{}, stt.log[:1][0])
+	assert.Len(t, 0, stt.entries)
+	assert.Len(t, 0, stt.keyed)
+	assert.Equal(t, math.MaxInt, stt.budget)
+	assert.True(t, stt.track)
+	assert.Nil(t, stt.src)
+	assert.Equal(t, "", stt.key)
+	assert.False(t, stt.off)
+	assert.False(t, stt.alias)
+	assert.Len(t, 0, stt.keys)
+	assert.Equal(t, "", stt.keys[:1][0])
+
+	assert.Same(t, tc, stt.tc)
+	assert.Equal(t, reflect.TypeFor[TBox](), stt.ftyp[0])
+	assert.Equal(t, reflect.TypeFor[int](), stt.ltyp)
+}
+
+func Test_state_fields(t *testing.T) {
+	t.Run("first call", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.tc = &typeCache{}
+		typ := reflect.TypeFor[TBox]()
+
+		// --- When ---
+		have := stt.fields(typ, "url", NewDecoder())
+
+		// --- Then ---
+		stored, _ := stt.tc.fields.Load(typ)
+		assert.Len(t, len(stored), have)
+		assert.Equal(t, typ, stt.ftyp[0])
+		assert.Nil(t, stt.ftyp[1])
+	})
+
+	t.Run("type of the call before", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		typ := reflect.TypeFor[TBox]()
+		kfs := keyFields{"x": {}}
+		stt.ftyp[0], stt.fkfs[0] = typ, kfs
+
+		// --- When ---
+		have := stt.fields(typ, "url", NewDecoder())
+
+		// --- Then ---
+		assert.Equal(t, kfs, have)
+	})
+
+	t.Run("type of the call two before", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		typ := reflect.TypeFor[TBox]()
+		kfs := keyFields{"x": {}}
+		stt.ftyp[1], stt.fkfs[1] = typ, kfs
+
+		// --- When ---
+		have := stt.fields(typ, "url", NewDecoder())
+
+		// --- Then ---
+		assert.Equal(t, kfs, have)
+	})
+
+	t.Run("other type", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		amb := reflect.TypeFor[TAmbig]()
+		stt.ftyp[0], stt.fkfs[0] = amb, keyFields{"x": {}}
+		typ := reflect.TypeFor[TBox]()
+
+		// --- When ---
+		have := stt.fields(typ, "url", NewDecoder())
+
+		// --- Then ---
+		_, ok := have["x"]
+		assert.False(t, ok)
+		assert.Equal(t, typ, stt.ftyp[0])
+		assert.Equal(t, amb, stt.ftyp[1])
+	})
+}
+
+func Test_state_isLeaf(t *testing.T) {
+	t.Run("asks the decoder", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+
+		// --- When ---
+		have := stt.isLeaf(reflect.TypeFor[int](), NewDecoder())
+
+		// --- Then ---
+		assert.True(t, have)
+		assert.Equal(t, reflect.TypeFor[int](), stt.ltyp)
+	})
+
+	t.Run("type of the call before", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.ltyp, stt.lleaf = reflect.TypeFor[TItem](), true
+
+		// --- When ---
+		have := stt.isLeaf(reflect.TypeFor[TItem](), NewDecoder())
+
+		// --- Then ---
+		assert.True(t, have)
+	})
+}
+
+func Test_state_mapScratch(t *testing.T) {
+	// --- Given ---
+	stt := newState()
+	mf := NewDecoder().mapFactsOf(reflect.TypeFor[map[string]int]())
+	mk, mv := stt.mapScratch(mf)
+
+	// --- When ---
+	hk, hv := stt.mapScratch(mf)
+
+	// --- Then ---
+	assert.Equal(t, reflect.TypeFor[string](), hk.Type())
+	assert.Equal(t, reflect.TypeFor[int](), hv.Type())
+	assert.True(t, hk.CanSet())
+	assert.Equal(t, mk.Addr().Pointer(), hk.Addr().Pointer())
+	assert.Equal(t, mv.Addr().Pointer(), hv.Addr().Pointer())
 }
 
 func Test_state_level(t *testing.T) {
-	// --- Given ---
-	stt := newState()
-	typ := reflect.TypeFor[TBox]()
-	lvl := stt.level(typ, "url")
+	t.Run("no cache", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		typ := reflect.TypeFor[TBox]()
 
-	// --- When ---
-	have := stt.level(typ, "url")
+		// --- When ---
+		have := stt.level(typ, "url")
 
-	// --- Then ---
-	assert.Equal(t, newLevel(typ, "url"), have)
-	assert.Equal(t, lvl, have)
-	assert.Len(t, 1, stt.levels)
+		// --- Then ---
+		assert.Equal(t, newLevel(typ, "url"), have)
+	})
+
+	t.Run("from the cache", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.tc = &typeCache{}
+		typ := reflect.TypeFor[TBox]()
+
+		// --- When ---
+		have := stt.level(typ, "url")
+
+		// --- Then ---
+		assert.Equal(t, newLevel(typ, "url"), have)
+		_, ok := stt.tc.levels.Load(typ)
+		assert.True(t, ok)
+	})
+}
+
+func Test_state_next_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		key  string
+		off  bool
+		stp  step
+		pth  string
+		txt  string
+		want string
+		wOff bool
+	}{
+		{
+			"canonical field",
+			"page.size",
+			false,
+			step{kind: stepField, name: "size", end: 9},
+			"page",
+			"",
+			"page.size",
+			false,
+		},
+		{
+			"field not canonical",
+			"page[size]",
+			false,
+			step{kind: stepField, name: "size"},
+			"page",
+			"",
+			"page.size",
+			false,
+		},
+		{
+			"field after an entry with another text",
+			"m[01].size",
+			true,
+			step{kind: stepField, name: "size", end: 10},
+			"m[1]",
+			"",
+			"m[1].size",
+			true,
+		},
+		{
+			"canonical entry",
+			"m[a]",
+			false,
+			step{kind: stepKey, key: "a", end: 4},
+			"m",
+			"a",
+			"m[a]",
+			false,
+		},
+		{
+			"entry with another text",
+			"m[01]",
+			false,
+			step{kind: stepKey, key: "01", end: 5},
+			"m",
+			"1",
+			"m[1]",
+			true,
+		},
+		{
+			"canonical index",
+			"l[2]",
+			false,
+			step{kind: stepIndex, pos: 2, end: 4},
+			"l",
+			"",
+			"l[2]",
+			false,
+		},
+		{
+			"index not canonical",
+			"l.2",
+			false,
+			step{kind: stepIndex, pos: 2},
+			"l",
+			"",
+			"l[2]",
+			false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- Given ---
+			stt := newState()
+			stt.key, stt.off = tc.key, tc.off
+
+			// --- When ---
+			have := stt.next(tc.stp, tc.pth, tc.txt)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+			assert.Equal(t, tc.wOff, stt.off)
+		})
+	}
 }
 
 func Test_state_entry(t *testing.T) {
@@ -3532,6 +4548,35 @@ func Test_state_entry(t *testing.T) {
 	})
 }
 
+func Test_textKey_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		kind reflect.Kind
+		want bool
+	}{
+		{"bool", reflect.Bool, true},
+		{"string", reflect.String, true},
+		{"int", reflect.Int, true},
+		{"uint8", reflect.Uint8, true},
+		{"float", reflect.Float64, false},
+		{"struct", reflect.Struct, false},
+		{"array", reflect.Array, false},
+		{"pointer", reflect.Pointer, false},
+		{"interface", reflect.Interface, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := textKey(tc.kind)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
 func Test_state_markReset(t *testing.T) {
 	t.Run("paths", func(t *testing.T) {
 		// --- Given ---
@@ -3543,7 +4588,8 @@ func Test_state_markReset(t *testing.T) {
 		stt.markReset("a", reflect.Value{})
 
 		// --- Then ---
-		assert.Equal(t, map[string]bool{"a": true, "b": true}, stt.reset)
+		want := map[string]pathFlag{"a": pathReset, "b": pathReset}
+		assert.Equal(t, want, stt.paths)
 		assert.Len(t, 2, stt.log)
 		assert.Equal(t, "a", stt.log[0].pth)
 		assert.Equal(t, "b", stt.log[1].pth)
@@ -3569,8 +4615,8 @@ func Test_state_markReached(t *testing.T) {
 	stt := newState()
 	steps := []step{
 		{kind: stepField, idx: []int{5}, name: "nest"},
-		{kind: stepKey, key: "a", name: "[a]"},
-		{kind: stepIndex, pos: 1, name: "[1]"},
+		{kind: stepKey, key: "a"},
+		{kind: stepIndex, pos: 1},
 		{kind: stepField, idx: []int{0}, name: "a.b"},
 	}
 
@@ -3578,14 +4624,14 @@ func Test_state_markReached(t *testing.T) {
 	stt.markReached(steps)
 
 	// --- Then ---
-	want := map[string]bool{
-		"":                true,
-		"nest":            true,
-		"nest[a]":         true,
-		"nest[a][1]":      true,
-		"nest[a][1][a.b]": true,
+	want := map[string]pathFlag{
+		"":                pathReached,
+		"nest":            pathReached,
+		"nest[a]":         pathReached,
+		"nest[a][1]":      pathReached,
+		"nest[a][1][a.b]": pathReached,
 	}
-	assert.Equal(t, want, stt.reached)
+	assert.Equal(t, want, stt.paths)
 }
 
 func Test_state_undo(t *testing.T) {
@@ -3602,7 +4648,7 @@ func Test_state_undo(t *testing.T) {
 		stt.undo(1)
 
 		// --- Then ---
-		assert.Equal(t, map[string]bool{"a": true}, stt.reset)
+		assert.Equal(t, map[string]pathFlag{"a": pathReset}, stt.paths)
 		assert.Len(t, 1, stt.log)
 		assert.Equal(t, "a", stt.log[0].pth)
 		assert.Equal(t, []int{1, 2}, s)
@@ -3662,12 +4708,12 @@ func Test_Decoder_apply(t *testing.T) {
 		dec := NewDecoder()
 		m := map[string][]int{"k": {9, 9, 9}}
 		dst := reflect.ValueOf(&m).Elem()
-		key := step{kind: stepKey, key: "k", name: "[k]"}
-		stp := []step{key, {kind: stepIndex, pos: 0, name: "[0]"}}
+		key := step{kind: stepKey, key: "k"}
+		stp := []step{key, {kind: stepIndex, pos: 0}}
 		vls := []string{"1"}
 
 		stt := newState()
-		bad := []step{key, {kind: stepIndex, pos: 1, name: "[1]"}}
+		bad := []step{key, {kind: stepIndex, pos: 1}}
 		_ = dec.apply(dst, bad, []string{"abc"}, stt, "") // Fails on abc.
 
 		// --- When ---
@@ -3683,7 +4729,7 @@ func Test_Decoder_apply(t *testing.T) {
 		s := []TRequired{{FStr: "a"}}
 		dst := reflect.ValueOf(&s).Elem()
 		stp := []step{
-			{kind: stepIndex, pos: 3, name: "[3]"},
+			{kind: stepIndex, pos: 3},
 			{kind: stepField, idx: []int{1}, name: "f_int"},
 		}
 		vls := []string{"x"}
@@ -3698,6 +4744,337 @@ func Test_Decoder_apply(t *testing.T) {
 		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
 		assert.Equal(t, []TRequired{{FStr: "a"}}, s)
 	})
+}
+
+func Test_Decoder_applyLeaf(t *testing.T) {
+	t.Run("sets the value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F *int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+
+		// --- When ---
+		err := NewDecoder().applyLeaf(dst, []string{"3"}, stt, "f", unmUnknown)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 3, *s.F)
+	})
+
+	t.Run("known unmarshaler", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F TTextPtr }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+
+		// --- When ---
+		err := NewDecoder().applyLeaf(dst, []string{"4"}, stt, "f", unmYes)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, TTextPtr(4), s.F)
+		assert.Len(t, 1, stt.log) // The value was saved first.
+	})
+
+	t.Run("error - value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+		stt.key = "x"
+
+		// --- When ---
+		err := NewDecoder().applyLeaf(dst, []string{"a"}, stt, "f", unmNo)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.True(t, stt.has("f", pathFailed))
+	})
+
+	t.Run("error - no decoder", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F chan int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+
+		// --- When ---
+		err := NewDecoder().applyLeaf(dst, []string{"a"}, stt, "f", unmNo)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrDecNotFound, err)
+	})
+
+	t.Run("error - conflict", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+		stt.mark("f", pathSet)
+
+		// --- When ---
+		err := NewDecoder().applyLeaf(dst, []string{"1"}, stt, "f", unmNo)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.Equal(t, 0, s.F)
+	})
+}
+
+func Test_Decoder_setLeafValue(t *testing.T) {
+	t.Run("pointer", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F *int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		stt := newState()
+
+		// --- When ---
+		err := NewDecoder().setLeafValue(dst, []string{"3"}, stt, unmUnknown)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 3, *s.F)
+		assert.Len(t, 1, stt.log) // The nil pointer, before it was set.
+	})
+
+	t.Run("error - no decoder", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F chan int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		err := NewDecoder().setLeafValue(dst, []string{"x"}, newState(), unmNo)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrDecNotFound, err)
+	})
+}
+
+func Test_Decoder_setLeaf(t *testing.T) {
+	t.Run("sets the value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		typ := reflect.TypeFor[int]()
+		stt := newState()
+		stt.key = "f"
+
+		// --- When ---
+		set := builtinSetter(typ)
+		err := NewDecoder().setLeaf(dst, []string{"5"}, stt, "f", typ, set)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, 5, s.F)
+	})
+
+	t.Run("error - value", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		typ := reflect.TypeFor[int]()
+		stt := newState()
+		stt.key = "f"
+
+		// --- When ---
+		set := builtinSetter(typ)
+		err := NewDecoder().setLeaf(dst, []string{"x"}, stt, "f", typ, set)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.True(t, stt.has("f", pathFailed))
+	})
+
+	t.Run("error - conflict", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		typ := reflect.TypeFor[int]()
+		stt := newState()
+		stt.key, stt.alias = "f", true
+		stt.mark("f", pathSet)
+
+		// --- When ---
+		set := builtinSetter(typ)
+		err := NewDecoder().setLeaf(dst, []string{"5"}, stt, "f", typ, set)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+		assert.Equal(t, 0, s.F)
+	})
+}
+
+func Test_state_setAt(t *testing.T) {
+	t.Run("canonical key", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key, stt.track = "a", false
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 0, stt.paths)
+		assert.False(t, stt.alias)
+	})
+
+	t.Run("canonical key is reached", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key = "a"
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]pathFlag{"a": pathReached}, stt.paths)
+	})
+
+	t.Run("canonical key of a slice", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key, stt.track = "a", false
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[*[]int]())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]pathFlag{"a": pathSet}, stt.paths)
+	})
+
+	t.Run("other key", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key, stt.track = "[a]", false
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, map[string]pathFlag{"a": pathSet}, stt.paths)
+		assert.True(t, stt.alias)
+	})
+
+	t.Run("error - other key after the canonical one", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.src = url.Values{"a": {"1"}, "b[0]": {"2"}}
+		stt.key = "b[0]"
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+	})
+
+	t.Run("canonical key after another key", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key, stt.alias = "a", true
+		stt.mark("a", pathSet)
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[int]())
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+	})
+
+	t.Run("error - indexed slice", func(t *testing.T) {
+		// --- Given ---
+		stt := newState()
+		stt.key = "a"
+		stt.mark("a", pathIndexed)
+
+		// --- When ---
+		err := stt.setAt("a", reflect.TypeFor[[]int]())
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrInvValue, err)
+	})
+}
+
+func Test_Decoder_isPlainKey_tabular(t *testing.T) {
+	reg := WithDecFunc(func(string) (int, error) { return 0, nil })
+
+	tt := []struct {
+		testN string
+
+		dec  *Decoder
+		typ  reflect.Type
+		want bool
+	}{
+		{"string", NewDecoder(), reflect.TypeFor[string](), true},
+		{"int", NewDecoder(), reflect.TypeFor[int](), true},
+		{"named int", NewDecoder(), reflect.TypeFor[IntAlias](), true},
+		{"bool", NewDecoder(), reflect.TypeFor[bool](), true},
+		{"float", NewDecoder(), reflect.TypeFor[float64](), false},
+		{"uintptr", NewDecoder(), reflect.TypeFor[uintptr](), false},
+		{"duration", NewDecoder(), reflect.TypeFor[time.Duration](), true},
+		{"text marshaler", NewDecoder(), reflect.TypeFor[TTextVal](), false},
+		{"text unmarshaler", NewDecoder(), reflect.TypeFor[TTextPtr](), false},
+		{"pointer", NewDecoder(), reflect.TypeFor[*int](), false},
+		{
+			"registered",
+			NewDecoder(reg),
+			reflect.TypeFor[int](),
+			false,
+		},
+		{"zero value", &Decoder{}, reflect.TypeFor[string](), true},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := tc.dec.isPlainKey(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Decoder_isUnmType_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		dec  *Decoder
+		typ  reflect.Type
+		want bool
+	}{
+		{"pointer method", NewDecoder(), reflect.TypeFor[TTextPtr](), true},
+		{"int", NewDecoder(), reflect.TypeFor[int](), false},
+		{"time", NewDecoder(), reflect.TypeFor[time.Time](), false},
+		{"pointer", NewDecoder(), reflect.TypeFor[*TTextPtr](), false},
+		{
+			"interface",
+			NewDecoder(),
+			reflect.TypeFor[encoding.TextUnmarshaler](),
+			false,
+		},
+		{
+			"registered",
+			NewDecoder(WithDecFunc(func(string) (TTextPtr, error) {
+				return 0, nil
+			})),
+			reflect.TypeFor[TTextPtr](),
+			false,
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := tc.dec.isUnmType(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_keyConflict(t *testing.T) {
@@ -4075,7 +5452,7 @@ func Test_isUnmarshal_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := isUnmarshal(reflectkit.GetValue(t, tc.s, "F"))
+			have := isUnmarshal(reflectkit.GetValue(t, tc.s, "F"), nil)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
@@ -4083,17 +5460,16 @@ func Test_isUnmarshal_tabular(t *testing.T) {
 	}
 }
 
-func Test_useUnmarshal(t *testing.T) {
+func Test_unmarshalText(t *testing.T) {
 	t.Run("value field with pointer receiver method", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), nil, "1")
+		err := unmarshalText(reflectkit.GetValue(t, s, "F"), nil, []string{"1"})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.True(t, have)
 		assert.Equal(t, TTextPtr(1), s.F)
 	})
 
@@ -4101,15 +5477,14 @@ func Test_useUnmarshal(t *testing.T) {
 		// --- Given ---
 		s := &struct{ F *TTextPtr }{F: new(TTextPtr(0))}
 		dst := reflectkit.GetValue(t, s, "F")
-		// Must call reflect.Value.Elem before calling useUnmarshal.
+		// Must call reflect.Value.Elem before calling unmarshalText.
 		dst = dst.Elem()
 
 		// --- When ---
-		have, err := useUnmarshal(dst, nil, "1")
+		err := unmarshalText(dst, nil, []string{"1"})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.True(t, have)
 		assert.Equal(t, new(TTextPtr(1)), s.F)
 	})
 
@@ -4118,43 +5493,28 @@ func Test_useUnmarshal(t *testing.T) {
 		s := &struct{ F *TTextPtr }{}
 		dst := reflectkit.GetValue(t, s, "F")
 		// Must instantiate new instance of the dst type and
-		// call reflect.Value.Elem before calling useUnmarshal.
+		// call reflect.Value.Elem before calling unmarshalText.
 		dst.Set(reflect.New(dst.Type().Elem()))
 		dst = dst.Elem()
 
 		// --- When ---
-		have, err := useUnmarshal(dst, nil, "1")
+		err := unmarshalText(dst, nil, []string{"1"})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.True(t, have)
 		assert.Equal(t, new(TTextPtr(1)), s.F)
-	})
-
-	t.Run("unmarshal time", func(t *testing.T) {
-		// --- Given ---
-		s := &struct{ F time.Time }{}
-		dst := reflectkit.GetValue(t, s, "F")
-
-		// --- When ---
-		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05+01:00")
-
-		// --- Then ---
-		assert.NoError(t, err)
-		assert.False(t, have)
-		assert.Zero(t, s.F)
 	})
 
 	t.Run("error - many values", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ F TTextPtr }{}
+		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(reflectkit.GetValue(t, s, "F"), nil, "1", "2")
+		err := unmarshalText(dst, nil, []string{"1", "2"})
 
 		// --- Then ---
 		assert.ErrorEqual(t, "require single value: received 2", err)
-		assert.True(t, have)
 		assert.Equal(t, TTextPtr(0), s.F)
 	})
 
@@ -4164,11 +5524,10 @@ func Test_useUnmarshal(t *testing.T) {
 		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05Z")
+		err := unmarshalText(dst, nil, []string{"2000-01-02T03:04:05Z"})
 
 		// --- Then ---
 		assert.NoError(t, err)
-		assert.True(t, have)
 		assert.Equal(t, time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC), *s.F.Time)
 	})
 
@@ -4179,11 +5538,10 @@ func Test_useUnmarshal(t *testing.T) {
 		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := useUnmarshal(dst, nil, "2000-01-02T03:04:05Z")
+		err := unmarshalText(dst, nil, []string{"2000-01-02T03:04:05Z"})
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrUnexported, err)
-		assert.True(t, have)
 		assert.Nil(t, s.F.tTime)
 	})
 }
@@ -4379,7 +5737,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F int }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4390,9 +5748,10 @@ func Test_setDst(t *testing.T) {
 	t.Run("error - decoder", func(t *testing.T) {
 		// --- Given ---
 		s := &struct{ F byte }{}
+		dst := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "256")
+		have, err := setDst(dst, nil, nil, nil, "256")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -4408,7 +5767,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "7F")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, nil, "7F")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4421,7 +5780,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F TTextPtr }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "GG")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, nil, "GG")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -4436,7 +5795,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F map[int]int }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4450,7 +5809,7 @@ func Test_setDst(t *testing.T) {
 		s := &struct{ F Alias }{}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), nil, nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4467,8 +5826,10 @@ func Test_setDst(t *testing.T) {
 			},
 		}
 
+		dst := reflectkit.GetValue(t, s, "F")
+
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, nil, "a", "b")
+		have, err := setDst(dst, reg, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4486,7 +5847,7 @@ func Test_setDst(t *testing.T) {
 		}
 
 		// --- When ---
-		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, nil, "1")
+		have, err := setDst(reflectkit.GetValue(t, s, "F"), reg, nil, nil, "1")
 
 		// --- Then ---
 		want := "invalid type: expected decoder to return `int` got `string`"
@@ -4498,6 +5859,68 @@ func Test_setDst(t *testing.T) {
 	})
 }
 
+func Test_setValue(t *testing.T) {
+	t.Run("unmarshaler", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F TTextPtr }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		have, err := setValue(dst, nil, nil, true, nil, []string{"7"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, have)
+		assert.Equal(t, TTextPtr(7), s.F)
+	})
+
+	t.Run("built-in", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		have, err := setValue(dst, nil, nil, false, nil, []string{"7"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, have)
+		assert.Equal(t, 7, s.F)
+	})
+
+	t.Run("registered over built-in", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+		reg := decReg{
+			reflect.TypeFor[int](): func(vls ...string) (any, error) {
+				return len(vls[0]), nil
+			},
+		}
+
+		// --- When ---
+		have, err := setValue(dst, reg, nil, false, nil, []string{"abc"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.True(t, have)
+		assert.Equal(t, 3, s.F)
+	})
+
+	t.Run("no decoder", func(t *testing.T) {
+		// --- Given ---
+		s := &struct{ F chan int }{}
+		dst := reflectkit.GetValue(t, s, "F")
+
+		// --- When ---
+		have, err := setValue(dst, nil, nil, false, nil, []string{"x"})
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.False(t, have)
+	})
+}
+
 func Test_setSliceOrArray(t *testing.T) {
 	t.Run("slice", func(t *testing.T) {
 		// --- Given ---
@@ -4505,7 +5928,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4519,7 +5942,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a")
+		err := setSliceOrArray(dst, nil, nil, "a")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4533,7 +5956,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "1")
+		err := setSliceOrArray(dst, nil, nil, "1")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4546,7 +5969,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4559,7 +5982,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4572,7 +5995,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4590,7 +6013,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		}
 
 		// --- When ---
-		err := setSliceOrArray(dst, reg, "a", "b")
+		err := setSliceOrArray(dst, reg, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4604,7 +6027,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a")
+		err := setSliceOrArray(dst, nil, nil, "a")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "decoder not found for `xbind.ct`", err)
@@ -4617,7 +6040,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "GG")
+		err := setSliceOrArray(dst, nil, nil, "GG")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid value: cannot convert `GG` to byte", err)
@@ -4630,7 +6053,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4643,7 +6066,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a")
+		err := setSliceOrArray(dst, nil, nil, "a")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4656,7 +6079,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "a", "b")
+		err := setSliceOrArray(dst, nil, nil, "a", "b")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -4670,7 +6093,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "1", "x")
+		err := setSliceOrArray(dst, nil, nil, "1", "x")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
@@ -4683,7 +6106,7 @@ func Test_setSliceOrArray(t *testing.T) {
 		dst := mirror.NewStructValue(s).FieldByName("F").Value()
 
 		// --- When ---
-		err := setSliceOrArray(dst, nil, "1", "x")
+		err := setSliceOrArray(dst, nil, nil, "1", "x")
 
 		// --- Then ---
 		assert.ErrorEqual(t, "invalid value: cannot convert `x` to int", err)
@@ -4694,7 +6117,7 @@ func Test_setSliceOrArray(t *testing.T) {
 func Test_decKey(t *testing.T) {
 	t.Run("value key", func(t *testing.T) {
 		// --- When ---
-		have, err := decKey(reflect.TypeFor[int](), nil, "42")
+		have, err := decKey(reflect.TypeFor[int](), nil, nil, "42")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4703,7 +6126,7 @@ func Test_decKey(t *testing.T) {
 
 	t.Run("pointer key", func(t *testing.T) {
 		// --- When ---
-		have, err := decKey(reflect.TypeFor[*int](), nil, "42")
+		have, err := decKey(reflect.TypeFor[*int](), nil, nil, "42")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4712,7 +6135,7 @@ func Test_decKey(t *testing.T) {
 
 	t.Run("negative zero key", func(t *testing.T) {
 		// --- When ---
-		have, err := decKey(reflect.TypeFor[float64](), nil, "-0")
+		have, err := decKey(reflect.TypeFor[float64](), nil, nil, "-0")
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -4721,7 +6144,7 @@ func Test_decKey(t *testing.T) {
 
 	t.Run("error - key", func(t *testing.T) {
 		// --- When ---
-		have, err := decKey(reflect.TypeFor[int](), nil, "x")
+		have, err := decKey(reflect.TypeFor[int](), nil, nil, "x")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrInvValue, err)
@@ -4730,7 +6153,7 @@ func Test_decKey(t *testing.T) {
 
 	t.Run("error - no decoder", func(t *testing.T) {
 		// --- When ---
-		have, err := decKey(reflect.TypeFor[chan int](), nil, "x")
+		have, err := decKey(reflect.TypeFor[chan int](), nil, nil, "x")
 
 		// --- Then ---
 		assert.ErrorIs(t, ErrDecNotFound, err)

@@ -19,6 +19,7 @@ import (
 	"github.com/ctx42/testing/pkg/assert"
 	"github.com/ctx42/testing/pkg/must"
 	"github.com/ctx42/testkit/pkg/reflectkit"
+	"github.com/ctx42/xrr/pkg/xrr"
 	"github.com/ctx42/xrr/pkg/xrr/xrrtest"
 )
 
@@ -2203,30 +2204,370 @@ func Test_Encoder_tagName(t *testing.T) {
 	})
 }
 
+func Test_encodesSure_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		fls  []encField
+		want bool
+	}{
+		{"no fields", nil, true},
+		{"sure and skipped", []encField{{sure: true}, {skip: true}}, true},
+		{"not sure", []encField{{sure: true}, {}}, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := encodesSure(tc.fls)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Encoder_fields(t *testing.T) {
+	type T struct {
+		A     int    `url:"a,omitempty"`
+		B     string `url:"-"`
+		c     int    //nolint:unused
+		TAmbA        // Embedded struct.
+		fmt.Stringer
+		D TItem `url:"d"`
+		X string
+	}
+
+	t.Run("plans", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder()
+
+		// --- When ---
+		have := enc.fields(reflect.TypeFor[T]())
+
+		// --- Then ---
+		assert.Len(t, 7, have)
+		assert.Equal(t, "a", have[0].name)
+		assert.True(t, have[0].omit)
+		assert.True(t, have[0].named)
+		assert.NotNil(t, have[0].plain)
+		assert.True(t, have[1].skip)
+		assert.True(t, have[2].skip)
+		assert.True(t, have[3].emb)
+		assert.True(t, have[4].skip)
+		assert.True(t, have[5].named)
+		assert.Nil(t, have[5].plain)
+		assert.True(t, have[6].named)
+	})
+
+	t.Run("cached", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder()
+		want := enc.fields(reflect.TypeFor[T]())
+
+		// --- When ---
+		have := enc.fields(reflect.TypeFor[T]())
+
+		// --- Then ---
+		assert.Same(t, &want[0], &have[0])
+	})
+
+	t.Run("zero value", func(t *testing.T) {
+		// --- When ---
+		have := (&Encoder{}).fields(reflect.TypeFor[T]())
+
+		// --- Then ---
+		assert.Len(t, 7, have)
+	})
+}
+
+func Test_Encoder_fields_nested(t *testing.T) {
+	// --- Given ---
+	type T struct {
+		In   TItem            `url:"in"`
+		Tm   time.Time        `url:"tm"`
+		Tags []string         `url:"tags"`
+		Attr map[string]int   `url:"attr"`
+		Box  map[string]TItem `url:"box"`
+		Ptr  *TItem           `url:"ptr"`
+	}
+	enc := NewEncoder()
+
+	// --- When ---
+	have := enc.fields(reflect.TypeFor[T]())
+
+	// --- Then ---
+	assert.Len(t, 2, have[0].sub)
+	assert.True(t, have[0].sure)
+	assert.NotNil(t, have[1].plain)
+	assert.False(t, have[1].sure) // The text of a time may fail.
+	assert.NotNil(t, have[2].elems)
+	assert.True(t, have[2].sure)
+	assert.NotNil(t, have[3].mp)
+	assert.Nil(t, have[4].mp) // Left for when it is encoded.
+	assert.Nil(t, have[5].sub)
+	assert.False(t, have[5].sure)
+}
+
+func Test_Encoder_needsAddr_tabular(t *testing.T) {
+	type tZero struct{ A int }
+	type tHolds struct {
+		A int
+		M TMarValPtr
+	}
+	type tArr struct{ A [2]TTextPtr }
+	type tPtr struct{ P *TMarValPtr }
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"plain struct", reflect.TypeFor[TItem](), false},
+		{"pointer Marshaler", reflect.TypeFor[TMarValPtr](), true},
+		{"value Marshaler", reflect.TypeFor[TMarValVal](), false},
+		{"holds a pointer Marshaler", reflect.TypeFor[tHolds](), true},
+		{"array of pointer TextMarshaler", reflect.TypeFor[tArr](), true},
+		{"through a pointer", reflect.TypeFor[tPtr](), false},
+		{"pointer IsZero", reflect.TypeFor[tZeroPtr](), true},
+		{"value IsZero", reflect.TypeFor[time.Time](), false},
+		{"no IsZero", reflect.TypeFor[tZero](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder().needsAddr(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Encoder_canLoop_tabular(t *testing.T) {
+	type tSlice struct{ S []TItem }
+	type tItf struct{ V any }
+	type tMap struct {
+		M map[string]tSlice
+	}
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"plain struct", reflect.TypeFor[TItem](), false},
+		{"slice of structs", reflect.TypeFor[tSlice](), false},
+		{"map of structs", reflect.TypeFor[tMap](), false},
+		{"interface", reflect.TypeFor[tItf](), true},
+		{"recursive", reflect.TypeFor[TNode](), true},
+		{"recursive slice", reflect.TypeFor[TRecSlice](), true},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder().canLoop(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Encoder_isComposite_tabular(t *testing.T) {
+	noop := func(TItem) (string, error) { return "", nil }
+
+	tt := []struct {
+		testN string
+
+		enc  *Encoder
+		typ  reflect.Type
+		want bool
+	}{
+		{"struct", NewEncoder(), reflect.TypeFor[TItem](), true},
+		{"marshaler", NewEncoder(), reflect.TypeFor[TMarValVal](), false},
+		{"ptr marshaler", NewEncoder(), reflect.TypeFor[TMarValPtr](), false},
+		{"text marshaler", NewEncoder(), reflect.TypeFor[TFltKey](), false},
+		{"time", NewEncoder(), reflect.TypeFor[time.Time](), false},
+		{"slice", NewEncoder(), reflect.TypeFor[[]int](), true},
+		{"map", NewEncoder(), reflect.TypeFor[map[string]TItem](), true},
+		{"array", NewEncoder(), reflect.TypeFor[[2]int](), true},
+		{"int", NewEncoder(), reflect.TypeFor[int](), false},
+		{"pointer", NewEncoder(), reflect.TypeFor[*TItem](), false},
+		{
+			"registered",
+			NewEncoder(WithEncFunc(noop)),
+			reflect.TypeFor[TItem](),
+			false,
+		},
+		{"zero value", &Encoder{}, reflect.TypeFor[TItem](), true},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := tc.enc.isComposite(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_Encoder_plain_tabular(t *testing.T) {
+	noop := func(int) (string, error) { return "", nil }
+
+	tt := []struct {
+		testN string
+
+		enc  *Encoder
+		typ  reflect.Type
+		want bool
+	}{
+		{"int", NewEncoder(), reflect.TypeFor[int](), true},
+		{"string", NewEncoder(), reflect.TypeFor[string](), true},
+		{"named int", NewEncoder(), reflect.TypeFor[IntAlias](), true},
+		{"duration", NewEncoder(), reflect.TypeFor[time.Duration](), true},
+		{"text marshaler", NewEncoder(), reflect.TypeFor[TTextVal](), false},
+		{"text pointer", NewEncoder(), reflect.TypeFor[TLevel](), false},
+		{"pointer", NewEncoder(), reflect.TypeFor[*int](), false},
+		{"slice", NewEncoder(), reflect.TypeFor[[]int](), false},
+		{
+			"registered",
+			NewEncoder(WithEncFunc(noop)),
+			reflect.TypeFor[int](),
+			false,
+		},
+		{"zero value", &Encoder{}, reflect.TypeFor[int](), true},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := tc.enc.plain(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have != nil)
+		})
+	}
+}
+
 func Test_newEncState(t *testing.T) {
 	// --- When ---
 	have := newEncState()
 
 	// --- Then ---
-	assert.NotNil(t, have.seen)
-	assert.Len(t, 0, have.seen)
-	assert.NotNil(t, have.levels)
-	assert.Len(t, 0, have.levels)
+	assert.Equal(t, 0, have.n)
+	assert.Nil(t, have.seen)
 }
 
-func Test_encState_level(t *testing.T) {
-	// --- Given ---
-	est := newEncState()
-	typ := reflect.TypeFor[TBox]()
-	lvl := est.level(typ, "url")
+func Test_encState_fields(t *testing.T) {
+	t.Run("asks the encoder", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		enc := NewEncoder()
 
-	// --- When ---
-	have := est.level(typ, "url")
+		// --- When ---
+		have := est.fields(enc, reflect.TypeFor[TItem]())
 
-	// --- Then ---
-	assert.Equal(t, newLevel(typ, "url"), have)
-	assert.Same(t, lvl.vis, have.vis)
-	assert.Len(t, 1, est.levels)
+		// --- Then ---
+		assert.Len(t, 2, have)
+		assert.Equal(t, reflect.TypeFor[TItem](), est.ftyp)
+	})
+
+	t.Run("type of the call before", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		fls := []encField{{name: "x"}}
+		est.ftyp, est.fls = reflect.TypeFor[TItem](), fls
+
+		// --- When ---
+		have := est.fields(NewEncoder(), reflect.TypeFor[TItem]())
+
+		// --- Then ---
+		assert.Equal(t, fls, have)
+	})
+}
+
+func Test_encState_enter(t *testing.T) {
+	t.Run("new key", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+
+		// --- When ---
+		have := est.enter(ptrKey{ptr: 1})
+
+		// --- Then ---
+		assert.True(t, have)
+		assert.Equal(t, 1, est.n)
+		assert.Equal(t, ptrKey{ptr: 1}, est.path[0])
+		assert.Nil(t, est.seen)
+	})
+
+	t.Run("key on the path", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		est.enter(ptrKey{ptr: 1})
+
+		// --- When ---
+		have := est.enter(ptrKey{ptr: 1})
+
+		// --- Then ---
+		assert.False(t, have)
+	})
+
+	t.Run("long path", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		for i := range pathScan {
+			est.enter(ptrKey{ptr: uintptr(i)})
+		}
+
+		// --- When ---
+		have := est.enter(ptrKey{ptr: pathScan})
+
+		// --- Then ---
+		assert.True(t, have)
+		assert.Equal(t, pathScan, est.n)
+		assert.Equal(t, map[ptrKey]bool{{ptr: pathScan}: true}, est.seen)
+		assert.False(t, est.enter(ptrKey{ptr: 0}))
+		assert.False(t, est.enter(ptrKey{ptr: pathScan}))
+	})
+}
+
+func Test_encState_leave(t *testing.T) {
+	t.Run("from the path", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		est.enter(ptrKey{ptr: 1})
+		est.enter(ptrKey{ptr: 2})
+
+		// --- When ---
+		est.leave(ptrKey{ptr: 2})
+
+		// --- Then ---
+		assert.Equal(t, 1, est.n)
+		assert.True(t, est.enter(ptrKey{ptr: 2}))
+	})
+
+	t.Run("from the map", func(t *testing.T) {
+		// --- Given ---
+		est := newEncState()
+		for i := range pathScan + 1 {
+			est.enter(ptrKey{ptr: uintptr(i)})
+		}
+
+		// --- When ---
+		est.leave(ptrKey{ptr: pathScan})
+
+		// --- Then ---
+		assert.Equal(t, pathScan, est.n)
+		assert.Len(t, 0, est.seen)
+	})
 }
 
 func Test_encSrc(t *testing.T) {
@@ -2238,7 +2579,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil, true)
+		have, err := (&Encoder{}).encSrc(dst, "", src, true)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2258,7 +2599,7 @@ func Test_encSrc(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, reg, false)
+		have, err := (&Encoder{reg: reg}).encSrc(dst, "F", src, false)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2273,7 +2614,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil, true)
+		have, err := (&Encoder{}).encSrc(dst, "", src, true)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "string too long", err)
@@ -2288,7 +2629,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflectkit.GetValue(t, s, "F")
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, nil, false)
+		have, err := (&Encoder{}).encSrc(dst, "F", src, false)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "non-printable ascii character", err)
@@ -2302,7 +2643,7 @@ func Test_encSrc(t *testing.T) {
 		src := reflect.ValueOf(TTextVal('A'))
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, nil, true)
+		have, err := (&Encoder{}).encSrc(dst, "", src, true)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2318,7 +2659,7 @@ func Test_encSrc(t *testing.T) {
 		reg := encReg{reflect.TypeFor[TPoint](): enc}
 
 		// --- When ---
-		have, err := encSrc(dst, "", src, reg, true)
+		have, err := (&Encoder{reg: reg}).encSrc(dst, "", src, true)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -2336,7 +2677,7 @@ func Test_encSrc(t *testing.T) {
 		reg := encReg{reflect.TypeOf(ct{}): enc}
 
 		// --- When ---
-		have, err := encSrc(dst, "F", src, reg, false)
+		have, err := (&Encoder{reg: reg}).encSrc(dst, "F", src, false)
 
 		// --- Then ---
 		assert.ErrorIs(t, errTest, err)
@@ -2402,76 +2743,12 @@ func Test_encSrc_tabular(t *testing.T) {
 			src := reflectkit.GetValue(t, tc.s, "F")
 
 			// --- When ---
-			have, err := encSrc(dst, tc.prefix, src, nil, false)
+			have, err := (&Encoder{}).encSrc(dst, tc.prefix, src, false)
 
 			// --- Then ---
 			assert.NoError(t, err)
 			assert.True(t, have)
 			assert.Equal(t, tc.want, dst.Encode())
-		})
-	}
-}
-
-func Test_isMarshaler_tabular(t *testing.T) {
-	tt := []struct {
-		testN string
-
-		typ  reflect.Type
-		want bool
-	}{
-		{"Marshaler", reflect.TypeFor[TMarValVal](), true},
-		{"TextMarshaler", reflect.TypeFor[TTextVal](), true},
-		{"Marshaler pointer receiver", reflect.TypeFor[TMarValPtr](), false},
-		{
-			"pointer to Marshaler pointer receiver",
-			reflect.TypeFor[*TMarValPtr](),
-			true,
-		},
-		{"TextMarshaler pointer receiver", reflect.TypeFor[TTextPtr](), false},
-		{
-			"pointer to TextMarshaler pointer receiver",
-			reflect.TypeFor[*TTextPtr](),
-			true,
-		},
-		{"int", reflect.TypeFor[int](), false},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.testN, func(t *testing.T) {
-			// --- When ---
-			have := isMarshaler(tc.typ)
-
-			// --- Then ---
-			assert.Equal(t, tc.want, have)
-		})
-	}
-}
-
-func Test_textUnmarshaler_tabular(t *testing.T) {
-	tt := []struct {
-		testN string
-
-		typ  reflect.Type
-		want bool
-	}{
-		{"named byte", reflect.TypeFor[TTextVal](), false},
-		{"pointer to named byte", reflect.TypeFor[*TTextVal](), false},
-		{"level", reflect.TypeFor[TLevel](), true},
-		{"pointer to level", reflect.TypeFor[*TLevel](), true},
-		{"text pointer", reflect.TypeFor[TTextPtr](), true},
-		{"float key", reflect.TypeFor[TFltKey](), false},
-		{"named string", reflect.TypeFor[tIDText](), false},
-		{"struct", reflect.TypeFor[tSumText](), false},
-		{"int", reflect.TypeFor[int](), false},
-	}
-
-	for _, tc := range tt {
-		t.Run(tc.testN, func(t *testing.T) {
-			// --- When ---
-			have := textUnmarshaler(tc.typ)
-
-			// --- Then ---
-			assert.Equal(t, tc.want, have)
 		})
 	}
 }
@@ -2618,6 +2895,182 @@ func Test_Encoder_encodeSlice_tabular(t *testing.T) {
 			assert.Equal(t, tc.want, dst.Encode())
 		})
 	}
+}
+
+func Test_Encoder_slicePlan(t *testing.T) {
+	t.Run("plain values", func(t *testing.T) {
+		// --- When ---
+		have := NewEncoder().slicePlan(reflect.TypeFor[[]int]())
+
+		// --- Then ---
+		assert.NotNil(t, have.plain)
+		assert.False(t, have.byFields)
+	})
+
+	t.Run("flat structs", func(t *testing.T) {
+		// --- When ---
+		have := NewEncoder().slicePlan(reflect.TypeFor[[]TItem]())
+
+		// --- Then ---
+		assert.Nil(t, have.plain)
+		assert.True(t, have.byFields)
+		assert.True(t, have.flat)
+		assert.Len(t, 2, have.fls)
+	})
+
+	t.Run("pointers to structs", func(t *testing.T) {
+		// --- When ---
+		have := NewEncoder().slicePlan(reflect.TypeFor[[]*TItem]())
+
+		// --- Then ---
+		assert.False(t, have.byFields)
+		assert.False(t, have.value)
+		assert.NotNil(t, have.lvl.nms)
+	})
+
+	t.Run("cached", func(t *testing.T) {
+		// --- Given ---
+		enc := NewEncoder()
+		want := enc.slicePlan(reflect.TypeFor[[]TItem]())
+
+		// --- When ---
+		have := enc.slicePlan(reflect.TypeFor[[]TItem]())
+
+		// --- Then ---
+		assert.Same(t, want, have)
+	})
+}
+
+func Test_isFlat_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		fls  []encField
+		want bool
+	}{
+		{"plain", []encField{{plain: encInt}}, true},
+		{"elems and skipped", []encField{{elems: encInt}, {skip: true}}, true},
+		{"embedded", []encField{{plain: encInt}, {emb: true}}, false},
+		{"struct", []encField{{sub: []encField{}}}, false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := isFlat(tc.fls)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
+}
+
+func Test_encodeFlat(t *testing.T) {
+	t.Run("fields", func(t *testing.T) {
+		// --- Given ---
+		type T struct {
+			A int      `url:"a,omitempty"`
+			B []string `url:"b"`
+			C string   `url:"x.y"`
+			d int
+		}
+		dst := url.Values{}
+		src := reflect.ValueOf(T{B: []string{"1", "2"}, C: "c", d: 4})
+		fls := NewEncoder().fields(reflect.TypeFor[T]())
+
+		// --- When ---
+		err := encodeFlat(dst, []byte("l[0]"), src, fls)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{"l[0].b": {"1", "2"}, "l[0][x.y]": {"c"}}
+		assert.Equal(t, want, dst)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		// --- Given ---
+		type T struct {
+			Tm time.Time `url:"tm"`
+		}
+		dst := url.Values{}
+		tim := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+		src := reflect.ValueOf(T{Tm: tim})
+		fls := NewEncoder().fields(reflect.TypeFor[T]())
+
+		// --- When ---
+		err := encodeFlat(dst, []byte("p"), src, fls)
+
+		// --- Then ---
+		assert.ErrorContain(t, "year outside of range", err)
+		assert.Equal(t, []string{"p.tm"}, xrr.FieldNames(err))
+	})
+}
+
+func Test_appendField_tabular(t *testing.T) {
+	tt := []struct {
+		testN string
+
+		pre  string
+		name string
+		want string
+	}{
+		{"first", "", "a", "a"},
+		{"after a path", "l[0]", "a", "l[0].a"},
+		{"name with a dot", "l[0]", "a.b", "l[0][a.b]"},
+		{"first name with a dot", "", "a.b", "[a.b]"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := appendField([]byte(tc.pre), tc.name)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, string(have))
+		})
+	}
+}
+
+func Test_encodeValues(t *testing.T) {
+	t.Run("values", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{"F": {"0"}}
+		src := reflect.ValueOf([]int{1, 2})
+
+		// --- When ---
+		err := encodeValues(dst, "F", src, encInt)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"F": {"0", "1", "2"}}, dst)
+	})
+
+	t.Run("no values", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf([]int{})
+
+		// --- When ---
+		err := encodeValues(dst, "F", src, encInt)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, 0, dst)
+	})
+
+	t.Run("error", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf([2]int{1, 2})
+		efn := func(reflect.Value) (string, error) { return "", errTest }
+
+		// --- When ---
+		err := encodeValues(dst, "F", src, efn)
+
+		// --- Then ---
+		assert.ErrorIs(t, errTest, err)
+		assert.Equal(t, map[string]error{"F[0]": errTest}, xrr.GetFields(err))
+	})
 }
 
 func Test_Encoder_encodeMap(t *testing.T) {
@@ -2992,6 +3445,137 @@ func Test_Encoder_encodeMap_tabular(t *testing.T) {
 	}
 }
 
+func Test_Encoder_mapPlan_tabular(t *testing.T) {
+	type tNode struct {
+		M map[string]int `url:"m"`
+	}
+
+	tt := []struct {
+		testN string
+
+		typ  reflect.Type
+		want bool
+	}{
+		{"string to int", reflect.TypeFor[map[string]int](), true},
+		{"int to string", reflect.TypeFor[map[int]string](), true},
+		{"string to struct", reflect.TypeFor[map[string]TItem](), true},
+		{"float keys", reflect.TypeFor[map[float64]int](), false},
+		{"text keys", reflect.TypeFor[map[TTextVal]int](), false},
+		{"time values", reflect.TypeFor[map[string]time.Time](), false},
+		{"struct of a map", reflect.TypeFor[map[string]tNode](), false},
+		{"pointer values", reflect.TypeFor[map[string]*int](), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := NewEncoder().mapPlan(tc.typ)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have != nil)
+		})
+	}
+}
+
+func Test_Encoder_encodeMapSure(t *testing.T) {
+	t.Run("structs", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		m := map[string]TItem{"a": {Size: 1, Name: "x"}, "b": {Size: 2}}
+		src := reflect.ValueOf(m)
+		enc := NewEncoder()
+		mp := enc.mapPlan(src.Type())
+
+		// --- When ---
+		err := enc.encodeMapSure(dst, "m", src, newEncState(), mp)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		want := url.Values{
+			"m[a].size": {"1"},
+			"m[a].name": {"x"},
+			"m[b].size": {"2"},
+			"m[b].name": {""},
+		}
+		assert.Equal(t, want, dst)
+	})
+
+	t.Run("many values", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		m := map[int]int{}
+		for i := range sureBuf + 1 {
+			m[i] = i
+		}
+		src := reflect.ValueOf(m)
+		enc := NewEncoder()
+		mp := enc.mapPlan(src.Type())
+
+		// --- When ---
+		err := enc.encodeMapSure(dst, "m", src, newEncState(), mp)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Len(t, sureBuf+1, dst)
+		assert.Equal(t, []string{"8"}, dst["m[8]"])
+	})
+
+	t.Run("error - bracket in a key of many", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		m := map[string]int{"a[b]": 0}
+		for i := range sureBuf {
+			m[strconv.Itoa(i)] = i
+		}
+		src := reflect.ValueOf(m)
+		enc := NewEncoder()
+		mp := enc.mapPlan(src.Type())
+
+		// --- When ---
+		err := enc.encodeMapSure(dst, "m", src, newEncState(), mp)
+
+		// --- Then ---
+		want := "m: invalid value: map key with a bracket (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 8, dst) // The keys sorting before it.
+	})
+}
+
+func Test_Encoder_encodeFewSure(t *testing.T) {
+	t.Run("values", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf(map[string]int{"a": 1, "b": 2})
+		enc := NewEncoder()
+		mp := enc.mapPlan(src.Type())
+		key := reflect.New(mp.kt).Elem()
+
+		// --- When ---
+		err := enc.encodeFewSure(dst, "m", src, newEncState(), mp, key)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, url.Values{"m[a]": {"1"}, "m[b]": {"2"}}, dst)
+	})
+
+	t.Run("error - empty key", func(t *testing.T) {
+		// --- Given ---
+		dst := url.Values{}
+		src := reflect.ValueOf(map[string]int{"a": 1, "": 2})
+		enc := NewEncoder()
+		mp := enc.mapPlan(src.Type())
+		key := reflect.New(mp.kt).Elem()
+
+		// --- When ---
+		err := enc.encodeFewSure(dst, "m", src, newEncState(), mp, key)
+
+		// --- Then ---
+		want := "m: invalid value: empty map key (ECInvValue)"
+		xrrtest.AssertFieldsEqual(t, want, err)
+		assert.Len(t, 0, dst) // The empty key sorts first.
+	})
+}
+
 func Test_Encoder_elemLevel_tabular(t *testing.T) {
 	tt := []struct {
 		testN string
@@ -3015,7 +3599,7 @@ func Test_Encoder_elemLevel_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have := NewEncoder().elemLevel(tc.typ, newEncState())
+			have := NewEncoder().elemLevel(tc.typ)
 
 			// --- Then ---
 			assert.Equal(t, tc.want, have)
@@ -3100,7 +3684,7 @@ func Test_Encoder_isLeafType_tabular(t *testing.T) {
 func Test_encMapKey(t *testing.T) {
 	t.Run("base type", func(t *testing.T) {
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(42), nil)
+		have, err := encMapKey(reflect.ValueOf(42), nil, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3109,7 +3693,7 @@ func Test_encMapKey(t *testing.T) {
 
 	t.Run("negative zero", func(t *testing.T) {
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(math.Copysign(0, -1)), nil)
+		have, err := encMapKey(reflect.ValueOf(math.Copysign(0, -1)), nil, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3118,7 +3702,7 @@ func Test_encMapKey(t *testing.T) {
 
 	t.Run("TextMarshaler", func(t *testing.T) {
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(TTextVal('A')), nil)
+		have, err := encMapKey(reflect.ValueOf(TTextVal('A')), nil, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3131,7 +3715,7 @@ func Test_encMapKey(t *testing.T) {
 		key := reflect.ValueOf(m).MapKeys()[0]
 
 		// --- When ---
-		have, err := encMapKey(key, nil)
+		have, err := encMapKey(key, nil, nil)
 
 		// --- Then ---
 		assert.NoError(t, err)
@@ -3140,7 +3724,7 @@ func Test_encMapKey(t *testing.T) {
 
 	t.Run("error - MarshalText", func(t *testing.T) {
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(TTextVal(0)), nil)
+		have, err := encMapKey(reflect.ValueOf(TTextVal(0)), nil, nil)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "non-printable ascii character", err)
@@ -3149,7 +3733,7 @@ func Test_encMapKey(t *testing.T) {
 
 	t.Run("error - key counting as nil", func(t *testing.T) {
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(TPromZero{}), nil)
+		have, err := encMapKey(reflect.ValueOf(TPromZero{}), nil, nil)
 
 		// --- Then ---
 		assert.ErrorIs(t, errNilKey, err)
@@ -3161,7 +3745,7 @@ func Test_encMapKey(t *testing.T) {
 		type ct struct{}
 
 		// --- When ---
-		have, err := encMapKey(reflect.ValueOf(ct{}), nil)
+		have, err := encMapKey(reflect.ValueOf(ct{}), nil, nil)
 
 		// --- Then ---
 		assert.ErrorEqual(t, "encoder not found for `xbind.ct`", err)
@@ -3170,7 +3754,7 @@ func Test_encMapKey(t *testing.T) {
 	})
 }
 
-func Test_marshalText_tabular(t *testing.T) {
+func Test_marshalString_tabular(t *testing.T) {
 	sec := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
 	neg := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", -3630))
 	hour := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 3600))
@@ -3195,13 +3779,90 @@ func Test_marshalText_tabular(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.testN, func(t *testing.T) {
 			// --- When ---
-			have, err := marshalText(tc.m)
+			have, err := marshalString(tc.m)
 
 			// --- Then ---
 			assert.NoError(t, err)
-			assert.Equal(t, tc.want, string(have))
+			assert.Equal(t, tc.want, have)
 		})
 	}
+}
+
+func Test_marshalString(t *testing.T) {
+	t.Run("error - year past 9999", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+		// --- When ---
+		have, err := marshalString(tim)
+
+		// --- Then ---
+		_, want := tim.MarshalText()
+		assert.ErrorEqual(t, want.Error(), err)
+		assert.Equal(t, "", have)
+	})
+
+	t.Run("time with nanoseconds", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(2020, 1, 1, 0, 0, 0, 123456789, time.UTC)
+
+		// --- When ---
+		have, err := marshalString(tim)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "2020-01-01T00:00:00.123456789Z", have)
+	})
+
+	t.Run("one allocation", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 3600))
+
+		// --- When ---
+		have := testing.AllocsPerRun(10, func() { _, _ = marshalString(&tim) })
+
+		// --- Then ---
+		assert.Equal(t, 1.0, have)
+	})
+}
+
+func Test_timeString(t *testing.T) {
+	t.Run("offset in minutes", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 3600))
+
+		// --- When ---
+		have, err := timeString(tim)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "2020-01-01T00:00:00+01:00", have)
+	})
+
+	t.Run("offset with seconds", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(2020, 1, 1, 0, 0, 0, 0, time.FixedZone("", 30))
+
+		// --- When ---
+		have, err := timeString(tim)
+
+		// --- Then ---
+		assert.NoError(t, err)
+		assert.Equal(t, "2019-12-31T23:59:30Z", have)
+	})
+
+	t.Run("error - year past 9999", func(t *testing.T) {
+		// --- Given ---
+		tim := time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC)
+
+		// --- When ---
+		have, err := timeString(tim)
+
+		// --- Then ---
+		_, want := tim.MarshalText()
+		assert.ErrorEqual(t, want.Error(), err)
+		assert.Equal(t, "", have)
+	})
 }
 
 func Test_fieldError(t *testing.T) {

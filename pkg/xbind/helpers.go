@@ -47,13 +47,14 @@ func fieldPath(pref, name string) string {
 
 // keyText returns the text of the map key, as the encoder writes it when it
 // can, else as the format verb of [fmt] prints it; the Go syntax of "%#v"
-// quotes strings, so keys printing alike stay apart.
-func keyText(key reflect.Value, format string) string {
+// quotes strings, so keys printing alike stay apart. The facts about types
+// come from tc.
+func keyText(key reflect.Value, format string, tc *typeCache) string {
 	if key.Kind() == reflect.Interface && !key.IsNil() {
 		key = key.Elem()
 	}
 	if !isNil(key) {
-		if txt, err := encMapKey(key, nil); err == nil {
+		if txt, err := encMapKey(key, nil, tc); err == nil {
 			return txt
 		}
 	}
@@ -114,6 +115,9 @@ func holdsPtr(typ reflect.Type) bool {
 
 // zeroer is implemented by types reporting whether they are zero.
 type zeroer interface{ IsZero() bool }
+
+// iZeroer is used to check if a type implements the zeroer interface.
+var iZeroer = reflect.TypeFor[zeroer]()
 
 // isZero returns true if v is a zero value, an empty slice or an empty map.
 // A struct implementing the IsZero method, on its value or on its address
