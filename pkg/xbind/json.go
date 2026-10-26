@@ -66,10 +66,10 @@ func UnmarshalJSONBody(req *http.Request, dst any) error {
 
 // HUE handles low-level JSON unmarshal errors. It returns the error [MaybeHUE]
 // translates err to, and a [json.InvalidUnmarshalError] (a nil or non-pointer
-// destination, a programming error) as it is; any other error is enveloped with
-// [ErrBind], which replaces the lead of an error that is already an
-// [xrr.Envelope], such as one an UnmarshalJSON method returns. It returns nil
-// when err is nil.
+// destination, a programming error) as it is, and so an error it already
+// translated, as an UnmarshalJSON method decoding with xbind returns; any
+// other error is enveloped with [ErrBind], which replaces the lead of an error
+// that is already an [xrr.Envelope]. It returns nil when err is nil.
 func HUE(err error) error {
 	if err == nil {
 		return nil
@@ -80,7 +80,22 @@ func HUE(err error) error {
 	if _, ok := errors.AsType[*json.InvalidUnmarshalError](err); ok {
 		return err
 	}
+	if translated(err) {
+		return err
+	}
 	return xrr.Envelop(err, ErrBind)
+}
+
+// translated reports whether err is an [xrr.Envelope] HUE or MaybeHUE made,
+// led by [xrr.ErrInvJSON] or [ErrBind], as an UnmarshalJSON method decoding
+// with xbind returns: enveloping it again would replace its lead.
+func translated(err error) bool {
+	env, ok := errors.AsType[xrr.Envelope](err)
+	if !ok {
+		return false
+	}
+	lead := env.Lead()
+	return errors.Is(lead, xrr.ErrInvJSON) || errors.Is(lead, ErrBind)
 }
 
 // HUEFor is [HUE] for an error of decoding JSON into dst. Before Go 1.27

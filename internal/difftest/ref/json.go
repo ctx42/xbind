@@ -80,7 +80,22 @@ func HUE(err error) error {
 	if _, ok := errors.AsType[*json.InvalidUnmarshalError](err); ok {
 		return err
 	}
+	if translated(err) {
+		return err
+	}
 	return xrr.Envelop(err, ErrBind)
+}
+
+// translated reports whether err is an [xrr.Envelope] HUE or MaybeHUE made,
+// led by [xrr.ErrInvJSON] or [ErrBind], as an UnmarshalJSON method decoding
+// with xbind returns: enveloping it again would replace its lead.
+func translated(err error) bool {
+	env, ok := errors.AsType[xrr.Envelope](err)
+	if !ok {
+		return false
+	}
+	lead := env.Lead()
+	return errors.Is(lead, xrr.ErrInvJSON) || errors.Is(lead, ErrBind)
 }
 
 // HUEFor is [HUE] for an error of decoding JSON into dst. The field path

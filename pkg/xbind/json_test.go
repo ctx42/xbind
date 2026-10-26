@@ -90,6 +90,26 @@ func Test_UnmarshalJSON(t *testing.T) {
 		assert.Contain(t, want, string(jsonkit.To(t, err)))
 	})
 
+	t.Run("error - array for nested UnmarshalJSON", func(t *testing.T) {
+		// --- When ---
+		err := UnmarshalJSON([]byte(`[]`), &TJSONTime{})
+
+		// --- Then ---
+		assert.ErrorIs(t, xrr.ErrInvJSON, err)
+		want := `
+		{
+			"code": "ECInvJSON",
+			"error": "invalid JSON",
+			"errors": [
+				{
+					"code": "ECInvJSON",
+					"error": "unmarshal type mismatch; expected object"
+				}
+			]
+		}`
+		assert.JSON(t, want, string(jsonkit.To(t, err)))
+	})
+
 	t.Run("error - wrong type in embedded struct", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -535,6 +555,18 @@ func Test_HUE(t *testing.T) {
 		assert.ErrorIs(t, xrr.ErrInvJSON, e.Lead())
 	})
 
+	t.Run("translated error", func(t *testing.T) {
+		// --- Given ---
+		var out struct{ A int }
+		e := HUE(json.Unmarshal([]byte("[]"), &out))
+
+		// --- When ---
+		err := HUE(e)
+
+		// --- Then ---
+		assert.Equal(t, e, err)
+	})
+
 	t.Run("invalid unmarshal error", func(t *testing.T) {
 		// --- Given ---
 		iue := &json.InvalidUnmarshalError{Type: reflect.TypeFor[int]()}
@@ -556,6 +588,33 @@ func Test_HUE(t *testing.T) {
 		assert.Same(t, ErrBind, e.Lead())
 		assert.Same(t, errTest, e.Unwrap())
 	})
+}
+
+func Test_translated(t *testing.T) {
+	inv := xrr.Envelop(errors.New("e"), xrr.ErrInvJSON)
+	bnd := xrr.Envelop(errors.New("e"), ErrBind)
+	other := xrr.Envelop(errors.New("e"), errors.New("lead"))
+
+	tt := []struct {
+		testN string
+		err   error
+		want  bool
+	}{
+		{"invalid JSON lead", inv, true},
+		{"binding lead", bnd, true},
+		{"other lead", other, false},
+		{"not an envelope", errors.New("e"), false},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := translated(tc.err)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_HUEFor(t *testing.T) {
