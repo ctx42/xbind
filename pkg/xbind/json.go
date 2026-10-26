@@ -83,10 +83,11 @@ func HUE(err error) error {
 	return xrr.Envelop(err, ErrBind)
 }
 
-// HUEFor is [HUE] for an error of decoding JSON into dst. The field path
-// encoding/json gives a [json.UnmarshalTypeError] names the embedded
-// structs on the way, as in "T1.name" for a field of an embedded T1;
-// HUEFor drops those names, so the field is named by its JSON keys alone.
+// HUEFor is [HUE] for an error of decoding JSON into dst. Before Go 1.27
+// the field path encoding/json gives a [json.UnmarshalTypeError] names the
+// embedded structs on the way, as in "T1.name" for a field of an embedded
+// T1; HUEFor drops those names, so the field is named by its JSON keys
+// alone on every Go version.
 // Call it instead of HUE with the dst passed to [json.Unmarshal].
 func HUEFor(dst any, err error) error {
 	return HUE(jsonFieldError(dst, err))

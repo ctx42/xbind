@@ -119,10 +119,8 @@ func ExampleHUEFor() {
 
 	err := json.Unmarshal([]byte(`{"name": 1}`), dst)
 
-	fmt.Println(xbind.HUE(err))
 	fmt.Println(xbind.HUEFor(dst, err))
 	// Output:
-	// T1.name: invalid type
 	// name: invalid type
 }
 

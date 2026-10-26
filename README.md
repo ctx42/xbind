@@ -277,10 +277,11 @@ fmt.Println(err)
 ```
 
 `HUEFor` is `HUE` for an error of `json.Unmarshal` into a known dst, as in an
-`UnmarshalJSON` method. encoding/json names embedded structs in the field
-path of a type error; `HUEFor` drops those names, so the field is named by
-its JSON keys alone. `UnmarshalJSON`, `UnmarshalJSONReader`, and
-`UnmarshalJSONBody` do the same:
+`UnmarshalJSON` method. Before Go 1.27 encoding/json names embedded structs
+in the field path of a type error (`T1.name` for the field below); `HUEFor`
+drops those names, so the field is named by its JSON keys alone on every Go
+version. `UnmarshalJSON`, `UnmarshalJSONReader`, and `UnmarshalJSONBody` do
+the same:
 
 <!-- gmmce:pkg/xbind/ExampleHUEFor -->
 ```go
@@ -292,10 +293,8 @@ dst := &struct{ *T1 }{}
 
 err := json.Unmarshal([]byte(`{"name": 1}`), dst)
 
-fmt.Println(xbind.HUE(err))
 fmt.Println(xbind.HUEFor(dst, err))
 // Output:
-// T1.name: invalid type
 // name: invalid type
 ```
 
