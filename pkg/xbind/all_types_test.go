@@ -213,6 +213,12 @@ type TWithTime struct {
 	FTime time.Time `url:"f_time"`
 }
 
+// TJSONInner is a struct embedded in the types of the field path tests.
+type TJSONInner struct {
+	Name string `json:"name"`
+	Num  int
+}
+
 // TJSONTime is a struct with a time field decoding itself with
 // [UnmarshalJSON], as types of xbind users do.
 type TJSONTime struct {

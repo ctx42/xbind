@@ -88,7 +88,8 @@ All source is in `pkg/xbind/`.
 - **`encoders.go`** — built-in encoders and `encReg.lookup`.
 - **`json.go`** — `UnmarshalJSON`, `UnmarshalJSONReader`,
   `UnmarshalJSONBody`, and `HUE`/`MaybeHUE`, which translate `encoding/json`
-  errors to xrr errors.
+  errors to xrr errors; `HUEFor` first drops the embedded struct names
+  encoding/json puts in a type error's field path (`jsonPath`).
 - **`helpers.go`** — type-agnostic helpers: `isZero` (`omitempty`),
   `isEmpty` (`required`), `buildPath`, `indirect`, and the like.
 

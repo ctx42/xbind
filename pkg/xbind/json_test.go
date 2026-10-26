@@ -90,6 +90,29 @@ func Test_UnmarshalJSON(t *testing.T) {
 		assert.Contain(t, want, string(jsonkit.To(t, err)))
 	})
 
+	t.Run("error - wrong type in embedded struct", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			*TJSONInner
+			X int `json:"x"`
+		}{}
+
+		// --- When ---
+		err := UnmarshalJSON([]byte(`{"name": 1}`), dst)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrBind, err)
+		want := `
+		{
+			"code": "ECBinding",
+			"error": "binding error",
+			"fields": {
+				"name": {"code": "ECInvType", "error": "invalid type"}
+			}
+		}`
+		assert.JSON(t, want, string(jsonkit.To(t, err)))
+	})
+
 	t.Run("error - invalid time in nested UnmarshalJSON", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -533,6 +556,175 @@ func Test_HUE(t *testing.T) {
 		assert.Same(t, ErrBind, e.Lead())
 		assert.Same(t, errTest, e.Unwrap())
 	})
+}
+
+func Test_HUEFor(t *testing.T) {
+	t.Run("nil error", func(t *testing.T) {
+		// --- When ---
+		err := HUEFor(&TJSONInner{}, nil)
+
+		// --- Then ---
+		assert.Nil(t, err)
+	})
+
+	t.Run("wrong type in embedded struct", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct{ *TJSONInner }{}
+		ute := json.Unmarshal([]byte(`{"name": 1}`), dst)
+
+		// --- When ---
+		err := HUEFor(dst, ute)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrBind, err)
+		want := `
+		{
+			"code": "ECBinding",
+			"error": "binding error",
+			"fields": {
+				"name": {"code": "ECInvType", "error": "invalid type"}
+			}
+		}`
+		assert.JSON(t, want, string(jsonkit.To(t, err)))
+	})
+
+	t.Run("error not about a field", func(t *testing.T) {
+		// --- Given ---
+		se := json.Unmarshal([]byte("{!!!}"), &TJSONInner{})
+
+		// --- When ---
+		err := HUEFor(&TJSONInner{}, se)
+
+		// --- Then ---
+		assert.Equal(t, HUE(se), err)
+	})
+}
+
+func Test_jsonFieldError(t *testing.T) {
+	t.Run("rewrites a copy", func(t *testing.T) {
+		// --- Given ---
+		ute := &json.UnmarshalTypeError{Field: "TJSONInner.name"}
+		dst := &struct{ *TJSONInner }{}
+
+		// --- When ---
+		err := jsonFieldError(dst, ute)
+
+		// --- Then ---
+		have, ok := errors.AsType[*json.UnmarshalTypeError](err)
+		assert.True(t, ok)
+		assert.Equal(t, "name", have.Field)
+		assert.Equal(t, "TJSONInner.name", ute.Field)
+	})
+
+	t.Run("not a type error", func(t *testing.T) {
+		// --- Given ---
+		e := errors.New("e")
+
+		// --- When ---
+		err := jsonFieldError(&TJSONInner{}, e)
+
+		// --- Then ---
+		assert.Same(t, e, err)
+	})
+
+	t.Run("type error without field", func(t *testing.T) {
+		// --- Given ---
+		ute := &json.UnmarshalTypeError{}
+
+		// --- When ---
+		err := jsonFieldError(&TJSONInner{}, ute)
+
+		// --- Then ---
+		assert.Same(t, ute, err)
+	})
+
+	t.Run("nil dst", func(t *testing.T) {
+		// --- Given ---
+		ute := &json.UnmarshalTypeError{Field: "TJSONInner.name"}
+
+		// --- When ---
+		err := jsonFieldError(nil, ute)
+
+		// --- Then ---
+		assert.Same(t, ute, err)
+	})
+}
+
+func Test_jsonPath_tabular(t *testing.T) {
+	type embPtr struct {
+		*TJSONInner
+		X int `json:"x"`
+	}
+	type embVal struct{ TJSONInner }
+	type named struct {
+		In TJSONInner `json:"in"`
+	}
+	type tagged struct {
+		TJSONInner `json:"inner"`
+	}
+	type list struct {
+		L []embPtr `json:"l"`
+	}
+	type unm struct {
+		T TJSONTime `json:"t"`
+	}
+	type hidden struct {
+		Skip TJSONInner `json:"-"`
+	}
+
+	tt := []struct {
+		testN string
+		typ   reflect.Type
+		path  string
+		want  string
+	}{
+		{
+			"embedded pointer",
+			reflect.TypeFor[embPtr](),
+			"TJSONInner.name",
+			"name",
+		},
+		{"embedded value", reflect.TypeFor[embVal](), "TJSONInner.Num", "Num"},
+		{"own field", reflect.TypeFor[embPtr](), "x", "x"},
+		{
+			"pointer to pointer",
+			reflect.TypeFor[**embPtr](),
+			"TJSONInner.name",
+			"name",
+		},
+		{"named field", reflect.TypeFor[named](), "in.name", "in.name"},
+		{
+			"tagged embedded",
+			reflect.TypeFor[tagged](),
+			"inner.name",
+			"inner.name",
+		},
+		{
+			"slice element",
+			reflect.TypeFor[list](),
+			"l.TJSONInner.name",
+			"l.name",
+		},
+		{
+			"unknown segment",
+			reflect.TypeFor[embPtr](),
+			"zzz.TJSONInner",
+			"zzz.TJSONInner",
+		},
+		{"json unmarshaler", reflect.TypeFor[unm](), "t.T.f_tim", "t.T.f_tim"},
+		{"ignored field", reflect.TypeFor[hidden](), "Skip.name", "Skip.name"},
+		{"not a struct", reflect.TypeFor[int](), "a.b", "a.b"},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.testN, func(t *testing.T) {
+			// --- When ---
+			have := jsonPath(tc.typ, tc.path)
+
+			// --- Then ---
+			assert.Equal(t, tc.want, have)
+		})
+	}
 }
 
 func Test_MaybeHUE(t *testing.T) {

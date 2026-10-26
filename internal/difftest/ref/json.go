@@ -16,6 +16,9 @@ import (
 	"github.com/ctx42/xrr/pkg/xrr"
 )
 
+// iJSONUnmarshaler is the [json.Unmarshaler] interface type.
+var iJSONUnmarshaler = reflect.TypeFor[json.Unmarshaler]()
+
 // UnmarshalJSON unmarshals JSON data to dst; see [UnmarshalJSONReader].
 func UnmarshalJSON(data []byte, dst any) error {
 	return UnmarshalJSONReader(bytes.NewReader(data), dst)
@@ -33,7 +36,7 @@ func UnmarshalJSONReader(r io.Reader, dst any) error {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		return HUE(err)
+		return HUEFor(dst, err)
 	}
 	_, err := dec.Token()
 	if errors.Is(err, io.EOF) {
@@ -78,6 +81,78 @@ func HUE(err error) error {
 		return err
 	}
 	return xrr.Envelop(err, ErrBind)
+}
+
+// HUEFor is [HUE] for an error of decoding JSON into dst. The field path
+// encoding/json gives a [json.UnmarshalTypeError] names the embedded
+// structs on the way, as in "T1.name" for a field of an embedded T1;
+// HUEFor drops those names, so the field is named by its JSON keys alone.
+// Call it instead of HUE with the dst passed to [json.Unmarshal].
+func HUEFor(dst any, err error) error {
+	return HUE(jsonFieldError(dst, err))
+}
+
+// jsonFieldError returns a copy of the [json.UnmarshalTypeError] err is, or
+// wraps, with its field path rewritten for the type of dst by [jsonPath];
+// any other error it returns as it is.
+func jsonFieldError(dst any, err error) error {
+	ute, ok := errors.AsType[*json.UnmarshalTypeError](err)
+	if !ok || ute.Field == "" || dst == nil {
+		return err
+	}
+	cpy := *ute
+	cpy.Field = jsonPath(reflect.TypeOf(dst), ute.Field)
+	return &cpy
+}
+
+// jsonPath returns path, the field path encoding/json reports for a value
+// of type typ, without the segments naming embedded structs. From the first
+// segment it cannot place in typ, such as one inside a type implementing
+// [json.Unmarshaler], it keeps the path as it is.
+func jsonPath(typ reflect.Type, path string) string {
+	segs := strings.Split(path, ".")
+	out := make([]string, 0, len(segs))
+	for i, seg := range segs {
+		typ = baseType(typ)
+		if typ.Kind() != reflect.Struct ||
+			reflect.PointerTo(typ).Implements(iJSONUnmarshaler) {
+			return strings.Join(append(out, segs[i:]...), ".")
+		}
+		fld, embedded, ok := jsonField(typ, seg)
+		if !ok {
+			return strings.Join(append(out, segs[i:]...), ".")
+		}
+		if !embedded {
+			out = append(out, seg)
+		}
+		typ = fld.Type
+	}
+	return strings.Join(out, ".")
+}
+
+// jsonField returns the field of the struct type typ that encoding/json names
+// seg in a field path, and whether it is an embedded struct, which
+// encoding/json names by its type.
+func jsonField(typ reflect.Type, seg string) (reflect.StructField, bool, bool) {
+	for i := range typ.NumField() {
+		fld := typ.Field(i)
+		name, _, _ := strings.Cut(fld.Tag.Get("json"), ",")
+		if name == "-" && fld.Tag.Get("json") == "-" {
+			continue
+		}
+		embedded := fld.Anonymous && name == "" &&
+			indirect(fld.Type).Kind() == reflect.Struct
+		if !embedded && !fld.IsExported() {
+			continue
+		}
+		if name == "" {
+			name = fld.Name
+		}
+		if name == seg {
+			return fld, embedded, true
+		}
+	}
+	return reflect.StructField{}, false, false
 }
 
 // MaybeHUE handles low-level JSON unmarshal errors. It returns true and the

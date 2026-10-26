@@ -4,6 +4,7 @@
 package xbind_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -107,6 +108,22 @@ func ExampleUnmarshalJSON() {
 	// Output:
 	// true
 	// json: unknown field "age"
+}
+
+func ExampleHUEFor() {
+	type Body struct {
+		Name string `json:"name"`
+	}
+	type T1 Body
+	dst := &struct{ *T1 }{}
+
+	err := json.Unmarshal([]byte(`{"name": 1}`), dst)
+
+	fmt.Println(xbind.HUE(err))
+	fmt.Println(xbind.HUEFor(dst, err))
+	// Output:
+	// T1.name: invalid type
+	// name: invalid type
 }
 
 func ExampleWithDecFunc() {
