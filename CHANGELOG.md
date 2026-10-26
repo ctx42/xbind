@@ -1,3 +1,6 @@
+## v0.2.0 (Mon, 26 Oct 2026 14:30:54 UTC)
+- feat(xbind): name JSON type errors by JSON keys alone.
+
 ## v0.1.1 (Mon, 26 Oct 2026 13:25:48 UTC)
 - fix(xbind): keep a translated time error from repeating its message.
 - fix(xbind): leave query field errors to the caller in MaybeHUE.
