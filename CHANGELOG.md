@@ -1,3 +1,7 @@
+## v0.2.1 (Mon, 26 Oct 2026 21:45:29 UTC)
+- test(xbind): make ExampleHUEFor output hold on Go 1.27.
+- fix(xbind): keep the lead of an error HUE already translated.
+
 ## v0.2.0 (Mon, 26 Oct 2026 14:30:54 UTC)
 - feat(xbind): name JSON type errors by JSON keys alone.
 
