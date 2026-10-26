@@ -213,6 +213,17 @@ type TWithTime struct {
 	FTime time.Time `url:"f_time"`
 }
 
+// TJSONTime is a struct with a time field decoding itself with
+// [UnmarshalJSON], as types of xbind users do.
+type TJSONTime struct {
+	FTime time.Time `json:"f_tim"`
+}
+
+func (tjt *TJSONTime) UnmarshalJSON(data []byte) error {
+	type T TJSONTime
+	return UnmarshalJSON(data, (*T)(tjt))
+}
+
 // TWithMarField is a struct with fields implementing [Marshaler].
 type TWithMarField struct {
 	FStr TMarValVal  `url:"f_mar"`

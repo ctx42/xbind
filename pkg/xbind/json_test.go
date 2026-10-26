@@ -89,6 +89,25 @@ func Test_UnmarshalJSON(t *testing.T) {
 		assert.Contain(t, want, string(jsonkit.To(t, err)))
 	})
 
+	t.Run("error - invalid time in nested UnmarshalJSON", func(t *testing.T) {
+		// --- Given ---
+		dst := &struct {
+			Doc TJSONTime `json:"doc"`
+		}{}
+
+		// --- When ---
+		err := UnmarshalJSON([]byte(`{"doc": {"f_tim": "x"}}`), dst)
+
+		// --- Then ---
+		assert.ErrorIs(t, ErrTimeFormat, err)
+		assert.ErrorIs(t, ErrBind, err)
+		want := `{"code":"ECBinding","error":"binding error","errors":[` +
+			`{"code":"ECInvTimeFormat","error":"invalid RFC3339 time; ` +
+			`parsing time \"x\" as \"2006-01-02T15:04:05Z07:00\": ` +
+			`cannot parse \"x\" as \"2006\""}]}`
+		assert.Equal(t, want, string(jsonkit.To(t, err)))
+	})
+
 	t.Run("error - string for int", func(t *testing.T) {
 		// --- Given ---
 		dst := &struct {
@@ -599,6 +618,19 @@ func Test_MaybeHUE(t *testing.T) {
 			`parsing time \"2022\" as `
 		assert.Contain(t, want, string(jsonkit.To(t, err)))
 		assert.True(t, have)
+	})
+
+	t.Run("time error already translated", func(t *testing.T) {
+		// --- Given ---
+		_, pe := time.Parse(time.RFC3339, "2022")
+		_, e := MaybeHUE(pe)
+
+		// --- When ---
+		have, err := MaybeHUE(e)
+
+		// --- Then ---
+		assert.True(t, have)
+		assert.Equal(t, e, err)
 	})
 
 	t.Run("unknown field", func(t *testing.T) {
