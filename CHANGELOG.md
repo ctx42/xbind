@@ -1,3 +1,7 @@
+## v0.1.1 (Mon, 26 Oct 2026 13:25:48 UTC)
+- fix(xbind): keep a translated time error from repeating its message.
+- fix(xbind): leave query field errors to the caller in MaybeHUE.
+
 ## v0.1.0 (Sun, 25 Oct 2026 12:35:05 UTC)
 - chore: scaffold project.
 - chore: add MIT license.
