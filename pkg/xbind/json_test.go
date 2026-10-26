@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"strings"
 	"testing"
@@ -630,6 +631,19 @@ func Test_MaybeHUE(t *testing.T) {
 
 		// --- Then ---
 		assert.True(t, have)
+		assert.Equal(t, e, err)
+	})
+
+	t.Run("query field time error", func(t *testing.T) {
+		// --- Given ---
+		dst := &TWithTime{}
+		e := NewDecoder().Decode(dst, url.Values{"f_time": {"x"}})
+
+		// --- When ---
+		have, err := MaybeHUE(e)
+
+		// --- Then ---
+		assert.False(t, have)
 		assert.Equal(t, e, err)
 	})
 

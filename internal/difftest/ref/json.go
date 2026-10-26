@@ -89,11 +89,6 @@ func MaybeHUE(err error) (bool, error) {
 	if err == nil {
 		return false, nil
 	}
-	// An UnmarshalJSON method of a nested type returns a time error already
-	// translated; translating it again would repeat its message.
-	if errors.Is(err, ErrTimeFormat) {
-		return true, err
-	}
 	if ute, ok := errors.AsType[*json.UnmarshalTypeError](err); ok {
 		// Since Go 1.27 a JSON value of the wrong type for a time.Time field
 		// is reported as a type error instead of the error returned by
@@ -148,6 +143,9 @@ func MaybeHUE(err error) (bool, error) {
 // timeError returns an [ErrTimeFormat] error wrapping err, enveloped with
 // [ErrBind].
 func timeError(err error) error {
+	if errors.Is(err, ErrTimeFormat) {
+		return err
+	}
 	code := xrr.WithCode(ECInvTimeFormat)
 	return xrr.Envelop(xrr.Newf("%w: %w", ErrTimeFormat, err, code), ErrBind)
 }
