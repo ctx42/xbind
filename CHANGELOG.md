@@ -1,3 +1,6 @@
+## v0.2.2 (Tue, 24 Nov 2026 14:40:36 UTC)
+- chore(deps): update dependencies.
+
 ## v0.2.1 (Mon, 26 Oct 2026 21:45:29 UTC)
 - test(xbind): make ExampleHUEFor output hold on Go 1.27.
 - fix(xbind): keep the lead of an error HUE already translated.
