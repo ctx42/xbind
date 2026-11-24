@@ -1,3 +1,6 @@
+## v0.2.3 (Tue, 24 Nov 2026 15:58:10 UTC)
+- build(deps): update the difftest and bench dependencies.
+
 ## v0.2.2 (Tue, 24 Nov 2026 14:40:36 UTC)
 - chore(deps): update dependencies.
 
